@@ -67,11 +67,12 @@
   overflow: hidden;
   line-height: 18px;
   padding: 1px 4px;
+  display: flex;
+  align-items: center;
 }
 
 .data-grid .data-row svg {
   vertical-align: middle;
-  fill: var(--network-row-icon-fill);
   margin-right: 4px;
   width: 10px;
 }
@@ -105,4 +106,61 @@
   left: 0;
   right: 0;
   overflow-x: hidden;
+}
+
+.time-column {
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+}
+
+.time-cell {
+  display: inline-block;
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
+  margin-right: 5px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--toolbar-color);
+  opacity: 0.8;
+}
+
+.name-cell {
+  display: inline-block;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.code-column {
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+  text-align: center;
+}
+
+.code-cell {
+  display: inline-block;
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+  font-family: monospace;
+  font-size: 11px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.code-cell.ok-code {
+  color: #0a0;
+}
+
+.code-cell.error-code {
+  color: rgb(216, 0, 0);
+}
+
+.data-grid .data-row.selected .code-cell {
+  color: var(--selection-fg-color);
 }

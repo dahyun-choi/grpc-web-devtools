@@ -2,17 +2,22 @@
 
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import { setPreserveLog, clearLog } from '../state/network';
+import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
 import { toggleFilter, setFilterValue } from '../state/toolbar';
-import { toggleClipboard } from "../state/clipboard";
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
+import SettingsIcon from '../icons/Settings';
+import Settings from './Settings';
 import './Toolbar.css';
 
 class Toolbar extends Component {
+  state = {
+    settingsOpen: false,
+  };
 
   _renderButtons() {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
+    const { settingsOpen } = this.state;
     return (
         <>
           <ToolbarButton title="Clear" onClick={() => clearLog({ force: true })} >
@@ -24,6 +29,13 @@ class Toolbar extends Component {
             className={(filterIsOpen ? "open " : "") + (filterIsEnabled ? "enabled" : "")}
            >
              <FilterIcon />
+           </ToolbarButton>
+          <ToolbarButton
+            title="Settings"
+            onClick={() => this.setState({ settingsOpen: !settingsOpen })}
+            className={settingsOpen ? "open" : ""}
+           >
+             <SettingsIcon />
            </ToolbarButton>
         </>
     )
@@ -50,12 +62,23 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { preserveLog, clipboardIsEnabled } = this.props;
+    const { preserveLog, toolbar } = this.props;
+    const { settingsOpen } = this.state;
     return (
       <>
         <div className="toolbar">
           <div className="toolbar-shadow">
-            {this._renderButtons()}           
+            {this._renderButtons()}
+            <ToolbarDivider />
+            <span className="toolbar-item text global-search">
+              <input
+                type="text"
+                placeholder="Global search..."
+                value={toolbar.globalSearchValue}
+                onChange={this._onGlobalSearchChanged}
+                title="Search in all requests/responses"
+              />
+            </span>
             <ToolbarDivider />
             <span className="toolbar-item checkbox" title="Do not clear log on page reload / navigation">
               <input
@@ -66,19 +89,22 @@ class Toolbar extends Component {
               />
               <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
             </span>
-            <ToolbarDivider />
-            <span className="toolbar-item checkbox" title="Enables clipboard for JSON tree (decreases rendering performance)">
-              <input
-                type="checkbox"
-                id="ui-checkbox-clipboard-is-enabled"
-                checked={clipboardIsEnabled}
-                onChange={this._onEnableClipboardChanged}
-              />
-              <label htmlFor="ui-checkbox-clipboard-is-enabled">Enable clipboard</label>
-            </span>
           </div>
         </div>
         {this._renderFilterToolbar()}
+        {settingsOpen && (
+          <div className="settings-modal-overlay" onClick={() => this.setState({ settingsOpen: false })}>
+            <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="settings-modal-header">
+                <h2>Settings</h2>
+                <button className="settings-modal-close" onClick={() => this.setState({ settingsOpen: false })}>×</button>
+              </div>
+              <div className="settings-modal-content">
+                <Settings />
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -88,14 +114,14 @@ class Toolbar extends Component {
     setPreserveLog(e.target.checked);
   }
 
-  _onEnableClipboardChanged = e => {
-    const { toggleClipboard } = this.props;
-    toggleClipboard(e.target.checked);
-  }
-
   _onFilterValueChanged = e => {
     const { setFilterValue } = this.props;
     setFilterValue(e.target.value);
+  }
+
+  _onGlobalSearchChanged = e => {
+    const { applyGlobalSearch } = this.props;
+    applyGlobalSearch(e.target.value);
   }
 }
 
@@ -121,7 +147,12 @@ class ToolbarButton extends Component {
 const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
-  clipboardIsEnabled: state.clipboard.clipboardIsEnabled,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog, toggleFilter, setFilterValue, toggleClipboard };
+const mapDispatchToProps = {
+  setPreserveLog,
+  clearLog: clearLogAndCache,
+  toggleFilter,
+  setFilterValue,
+  applyGlobalSearch
+};
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

@@ -8,6 +8,7 @@ const toolbarSlice = createSlice({
     filterIsOpen: true,
     filterIsEnabled: false,
     filterValue: "",
+    globalSearchValue: "",
   },
   reducers: {
     toggleFilter(state) {
@@ -17,12 +18,16 @@ const toolbarSlice = createSlice({
       const { payload } = action;
       state.filterValue = payload;
       state.filterIsEnabled = !!(state.filterValue && state.filterValue.length > 0);
+    },
+    setGlobalSearchValue(state, action) {
+      const { payload } = action;
+      state.globalSearchValue = payload;
     }
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue } = actions;
+export const { toggleFilter, setFilterValue, setGlobalSearchValue } = actions;
 
 export default reducer

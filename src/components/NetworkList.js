@@ -19,8 +19,14 @@ class NetworkList extends Component {
               <table className="header">
                 <tbody>
                   <tr>
+                    <th className="time-column">
+                      <div>Time</div>
+                    </th>
                     <th>
                       <div>Name</div>
+                    </th>
+                    <th className="code-column">
+                      <div>Code</div>
                     </th>
                   </tr>
                 </tbody>
@@ -35,7 +41,7 @@ class NetworkList extends Component {
                     height={height}
                     itemSize={21}
                     itemData={network.log}
-                    overscanCount={50}
+                    overscanCount={15}
                   >
                     {NetworkListRow}
                   </List>

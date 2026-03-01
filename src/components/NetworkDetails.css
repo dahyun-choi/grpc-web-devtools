@@ -1,10 +1,257 @@
+.details-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--network-bg);
+}
 
-.details-data {
+.details-scroll-area {
+  flex: 1;
+  overflow: auto;
   padding: 4px;
-  background-color:var(--network-bg);
-  overflow: scroll;
+  position: relative;
 }
 
 .react-json-view svg {
-    height: 0.9em !important;
+  height: 0.9em !important;
+}
+
+.payload-warning {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--toolbar-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.payload-metadata {
+  display: flex;
+  padding: 8px;
+  border-top: 1px solid var(--divider-color);
+  font-size: 12px;
+  flex-direction: column;
+  background-color: var(--toolbar-bg-color);
+  flex-shrink: 0;
+}
+
+.payload-metadata-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.payload-metadata-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  gap: 8px;
+}
+
+.payload-metadata-row span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.details-search-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  background: var(--toolbar-bg-color);
+  border-bottom: 1px solid var(--divider-color);
+  flex-shrink: 0;
+}
+
+.json-search-input {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  flex: 1;
+  outline: none;
+}
+
+.json-search-input:focus {
+  border-color: #4A90E2;
+}
+
+.json-search-input::placeholder {
+  color: var(--toolbar-color);
+  opacity: 0.5;
+}
+
+.json-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.json-action-button:hover {
+  background: var(--network-row-hover);
+}
+
+.json-action-button:active {
+  transform: scale(0.95);
+}
+
+.json-action-button.copied,
+.json-action-button.repeated {
+  background: #4caf50;
+  color: #fff;
+  border-color: #4caf50;
+  animation: pulse 0.3s ease;
+}
+
+.json-action-button.edit-send-button {
+  background: #2196F3;
+  color: #fff;
+  border-color: #2196F3;
+  font-weight: 500;
+}
+
+.json-action-button.edit-send-button:hover {
+  background: #1976D2;
+  border-color: #1976D2;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.json-action-button svg {
+  height: 12px;
+}
+
+.search-highlight {
+  background-color: #ffeb3b !important;
+  color: #000 !important;
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Markdown-style JSON syntax highlighting */
+.details-scroll-area .react-json-view {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+/* Object/Array keys - cyan/blue */
+.details-scroll-area .react-json-view .object-key {
+  color: #0969da !important;
+  font-weight: 500;
+}
+
+/* String values - green */
+.details-scroll-area .react-json-view .string-value {
+  color: #0a3069 !important;
+}
+
+/* Number values - orange/red */
+.details-scroll-area .react-json-view .number-value,
+.details-scroll-area .react-json-view .integer-value,
+.details-scroll-area .react-json-view .float-value {
+  color: #cf222e !important;
+}
+
+/* Boolean values - purple */
+.details-scroll-area .react-json-view .boolean-value {
+  color: #8250df !important;
+  font-weight: 500;
+}
+
+/* Null values - purple */
+.details-scroll-area .react-json-view .null-value {
+  color: #8250df !important;
+  font-weight: 500;
+}
+
+/* Brackets and braces - gray */
+.details-scroll-area .react-json-view .brace-row,
+.details-scroll-area .react-json-view .array-brackets,
+.details-scroll-area .react-json-view .object-brackets {
+  color: #57606a !important;
+}
+
+/* Edit mode styling */
+.details-scroll-area.edit-mode {
+  border: 2px dashed #2196F3;
+  border-radius: 4px;
+}
+
+.details-scroll-area.edit-mode::before {
+  content: "Click on values to edit them";
+  display: block;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #E3F2FD;
+  color: #1976D2;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .details-scroll-area.edit-mode::before {
+    background: #1a237e;
+    color: #90caf9;
+  }
+}
+
+/* Dark mode colors */
+@media (prefers-color-scheme: dark) {
+  /* Object/Array keys - light blue */
+  .details-scroll-area .react-json-view .object-key {
+    color: #58a6ff !important;
+  }
+
+  /* String values - light green */
+  .details-scroll-area .react-json-view .string-value {
+    color: #a5d6ff !important;
+  }
+
+  /* Number values - orange */
+  .details-scroll-area .react-json-view .number-value,
+  .details-scroll-area .react-json-view .integer-value,
+  .details-scroll-area .react-json-view .float-value {
+    color: #ffa657 !important;
+  }
+
+  /* Boolean values - purple */
+  .details-scroll-area .react-json-view .boolean-value {
+    color: #d2a8ff !important;
+  }
+
+  /* Null values - purple */
+  .details-scroll-area .react-json-view .null-value {
+    color: #d2a8ff !important;
+  }
+
+  /* Brackets and braces - light gray */
+  .details-scroll-area .react-json-view .brace-row,
+  .details-scroll-area .react-json-view .array-brackets,
+  .details-scroll-area .react-json-view .object-brackets {
+    color: #8b949e !important;
+  }
 }

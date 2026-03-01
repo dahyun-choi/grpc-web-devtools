@@ -5,11 +5,10 @@ import { createSlice } from "@reduxjs/toolkit";
 const clipboardSlice = createSlice({
   name: 'clipboard',
   initialState: {
-    clipboardIsEnabled: false,
+    clipboardIsEnabled: true,
   },
   reducers: {
-    toggleClipboard(state) {
-      state.clipboardIsEnabled = !state.clipboardIsEnabled;
+    toggleClipboard() {
     }
   },
 

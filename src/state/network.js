@@ -2,7 +2,8 @@
 
 import { createSlice } from "@reduxjs/toolkit";
 import Fuse from 'fuse.js';
-import { setFilterValue } from "./toolbar";
+import { setFilterValue, setGlobalSearchValue } from "./toolbar";
+import { addNetworkEntry, clearNetworkCache, getNetworkEntry } from "./networkCache";
 
 var options = {
   shouldSort: false,
@@ -17,13 +18,14 @@ var fuse = new Fuse([], options);
 const networkSlice = createSlice({
   name: 'network',
   initialState: {
-    preserveLog: false,
+    preserveLog: true,
     selectedIdx: null,
     selectedEntry: null,
-    log: [
-    ],
+    log: [],
     _filterValue: '',
     _logBak: [],
+    _globalSearchValue: '',
+    _logBakBeforeGlobalSearch: [],
   },
   reducers: {
     networkLog(state, action) {
@@ -33,12 +35,29 @@ const networkSlice = createSlice({
         const parts = payload.method.split('/')
         payload.endpoint = parts.pop() || parts.pop();
       }
+
+      // Check if entry already exists (by entryId)
+      const existingIdx = log.findIndex(e => e.entryId === payload.entryId);
+      const existingIdxBak = _logBak.findIndex(e => e.entryId === payload.entryId);
+
       if (_filterValue.length > 0) {
-        _logBak.push(payload);
+        if (existingIdxBak >= 0) {
+          // Update existing entry in backup
+          _logBak[existingIdxBak] = payload;
+        } else {
+          // Add new entry
+          _logBak.push(payload);
+        }
         fuse.setCollection(_logBak);
-        state.log = fuse.search(_filterValue);
+        state.log = fuse.search(_filterValue).map(result => result.item || result);
       } else {
-        log.push(payload);
+        if (existingIdx >= 0) {
+          // Update existing entry
+          log[existingIdx] = payload;
+        } else {
+          // Add new entry
+          log.push(payload);
+        }
       }
     },
     selectLogEntry(state, action) {
@@ -63,6 +82,10 @@ const networkSlice = createSlice({
       const { payload } = action;
       state.preserveLog = payload;
     },
+    setFilteredLog(state, action) {
+      const { payload } = action;
+      state.log = payload;
+    },
   },
   extraReducers: {
     [setFilterValue]: (state, action) => {
@@ -79,12 +102,110 @@ const networkSlice = createSlice({
         state._logBak = state.log;
       }
       fuse.setCollection(state._logBak);
-      state.log = fuse.search(filterValue);
+      state.log = fuse.search(filterValue).map(result => result.item || result);
+    },
+    [setGlobalSearchValue]: (state, action) => {
+      const { payload: globalSearchValue = '' } = action;
+      state._globalSearchValue = globalSearchValue;
+
+      // 전역 검색 해제
+      if (globalSearchValue.length === 0) {
+        if (state._logBakBeforeGlobalSearch.length > 0) {
+          state.log = state._logBakBeforeGlobalSearch;
+          state._logBakBeforeGlobalSearch = [];
+        }
+        return;
+      }
+
+      // 백업이 없으면 현재 로그 백업
+      if (state._logBakBeforeGlobalSearch.length === 0) {
+        state._logBakBeforeGlobalSearch = [...state.log];
+      }
+
+      // 여기서는 state 변경하지 않고 thunk에서 처리
     },
   },
 });
 
 const { actions, reducer } = networkSlice;
 export const { networkLog, selectLogEntry, clearLog, setPreserveLog } = actions;
+
+function buildSummaryEntry(entry) {
+  // Extract status code from error
+  let statusCode = null;
+  if (entry.error) {
+    statusCode = entry.error.code || entry.error;
+  } else if (entry.response) {
+    statusCode = 0; // OK
+  }
+
+  return {
+    entryId: entry.entryId,
+    method: entry.method,
+    methodType: entry.methodType,
+    request: !!entry.request,
+    response: !!entry.response,
+    error: entry.error,
+    requestId: entry.requestId,
+    timestamp: entry.timestamp,
+    duration: entry.duration,
+    statusCode: statusCode,
+  };
+}
+
+export const logNetworkEntry = (data) => (dispatch) => {
+  const fullEntry = addNetworkEntry(data);
+  dispatch(networkLog(buildSummaryEntry(fullEntry)));
+};
+
+export const clearLogAndCache = (payload) => (dispatch) => {
+  clearNetworkCache();
+  dispatch(clearLog(payload));
+};
+
+function searchInJSON(obj, searchText) {
+  if (!obj) return false;
+
+  try {
+    const jsonStr = JSON.stringify(obj).toLowerCase();
+    return jsonStr.includes(searchText.toLowerCase());
+  } catch (e) {
+    return false;
+  }
+}
+
+export const applyGlobalSearch = (globalSearchValue) => (dispatch, getState) => {
+  // 먼저 setGlobalSearchValue를 실행하여 백업 생성
+  dispatch(setGlobalSearchValue(globalSearchValue));
+
+  // 검색어가 없으면 여기서 종료 (extraReducer에서 복원 처리됨)
+  if (!globalSearchValue || globalSearchValue.length === 0) {
+    return;
+  }
+
+  // 백업이 생성된 후의 state를 가져옴
+  const state = getState();
+
+  // 항상 백업된 원본 리스트에서 필터링
+  const allEntries = state.network._logBakBeforeGlobalSearch.length > 0
+    ? state.network._logBakBeforeGlobalSearch
+    : state.network.log;
+
+  const filtered = allEntries.filter(summaryEntry => {
+    const fullEntry = getNetworkEntry(summaryEntry.entryId);
+    if (!fullEntry) return false;
+
+    // method, request, response, error 모두 검색
+    return (
+      searchInJSON(fullEntry.method, globalSearchValue) ||
+      searchInJSON(fullEntry.request, globalSearchValue) ||
+      searchInJSON(fullEntry.response, globalSearchValue) ||
+      searchInJSON(fullEntry.error, globalSearchValue)
+    );
+  });
+
+  // 필터링된 결과를 state에 반영
+  dispatch({ type: 'network/setFilteredLog', payload: filtered });
+};
 
 export default reducer
