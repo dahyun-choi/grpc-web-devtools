@@ -133,8 +133,29 @@ export const { networkLog, selectLogEntry, clearLog, setPreserveLog } = actions;
 function buildSummaryEntry(entry) {
   // Extract status code from error
   let statusCode = null;
+
   if (entry.error) {
-    statusCode = entry.error.code || entry.error;
+    // Extract gRPC error code
+    if (typeof entry.error === 'object') {
+      statusCode = entry.error.code;
+      // If code is not set, try to parse from message
+      if (statusCode == null && entry.error.message) {
+        const match = entry.error.message.match(/code = (\w+)/);
+        if (match) {
+          // Convert gRPC status name to code
+          const grpcStatusCodes = {
+            'OK': 0, 'CANCELLED': 1, 'UNKNOWN': 2, 'INVALID_ARGUMENT': 3,
+            'DEADLINE_EXCEEDED': 4, 'NOT_FOUND': 5, 'ALREADY_EXISTS': 6,
+            'PERMISSION_DENIED': 7, 'RESOURCE_EXHAUSTED': 8, 'FAILED_PRECONDITION': 9,
+            'ABORTED': 10, 'OUT_OF_RANGE': 11, 'UNIMPLEMENTED': 12,
+            'INTERNAL': 13, 'UNAVAILABLE': 14, 'DATA_LOSS': 15, 'UNAUTHENTICATED': 16
+          };
+          statusCode = grpcStatusCodes[match[1]] !== undefined ? grpcStatusCodes[match[1]] : match[1];
+        }
+      }
+    } else {
+      statusCode = entry.error;
+    }
   } else if (entry.response) {
     statusCode = 0; // OK
   }

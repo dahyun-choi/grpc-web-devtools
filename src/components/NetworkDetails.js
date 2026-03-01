@@ -32,9 +32,18 @@ class NetworkDetails extends Component {
     repeated: false,
     editMode: false,
     editedData: null,
+    requestTab: 'body', // 'headers' or 'body'
+    responseTab: 'body', // 'headers' or 'body'
+    requestCollapsed: false,
+    responseCollapsed: false,
+    requestCopied: false,
+    responseCopied: false,
+    splitPosition: 50, // Percentage of request section height
+    isDragging: false,
   };
 
   jsonContainerRef = React.createRef();
+  containerRef = React.createRef();
   highlightTimeout = null;
 
   componentDidUpdate(prevProps, prevState) {
@@ -43,7 +52,21 @@ class NetworkDetails extends Component {
     const entryChanged = prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId;
 
     if (entryChanged) {
-      this.setState({ jsonCollapsed: 1, lastEntryId: nextEntryId, searchText: '', copied: false, repeated: false, editMode: false, editedData: null });
+      this.setState({
+        jsonCollapsed: 1,
+        lastEntryId: nextEntryId,
+        searchText: '',
+        copied: false,
+        repeated: false,
+        editMode: false,
+        editedData: null,
+        requestTab: 'body',
+        responseTab: 'body',
+        requestCollapsed: false,
+        responseCollapsed: false,
+        requestCopied: false,
+        responseCopied: false,
+      });
     }
 
     // 검색어가 변경되거나 전역 검색어가 변경되거나 entry가 변경되면 하이라이트 업데이트
@@ -66,22 +89,160 @@ class NetworkDetails extends Component {
     }
   }
 
+  componentDidMount() {
+    document.addEventListener('mousemove', this._handleMouseMove);
+    document.addEventListener('mouseup', this._handleMouseUp);
+  }
+
   componentWillUnmount() {
     this._clearHighlights();
     if (this.highlightTimeout) {
       clearTimeout(this.highlightTimeout);
     }
+    document.removeEventListener('mousemove', this._handleMouseMove);
+    document.removeEventListener('mouseup', this._handleMouseUp);
   }
 
   render() {
     const { entry } = this.props;
+    const { splitPosition, isDragging } = this.state;
+
     return (
-      <div className="widget vbox details-container">
-        {this._renderSearchBar(entry)}
-        {this._renderContent(entry)}
+      <div className="widget vbox details-container" ref={this.containerRef}>
+        {this._renderRequestSection(entry, splitPosition)}
+        <div
+          className={`split-divider ${isDragging ? 'dragging' : ''}`}
+          onMouseDown={this._handleMouseDown}
+        >
+          <div className="split-handle"></div>
+        </div>
+        {this._renderResponseSection(entry, 100 - splitPosition)}
       </div>
     );
   }
+
+  _renderRequestSection = (entry, heightPercent) => {
+    if (!entry) return null;
+
+    const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+    const entryToRender = cachedEntry || entry;
+    const { method, request } = entryToRender;
+    const { requestTab, requestCollapsed, editMode, editedData, repeated, requestCopied } = this.state;
+
+    const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
+    const rawRequest = rawCache?.get(entry.requestId);
+
+    return (
+      <div className="request-section" style={{ height: `${heightPercent}%` }}>
+        <div className="section-header">
+          <span className="section-title">Request</span>
+          <div className="section-tabs">
+            <button
+              className={`tab-button ${requestTab === 'headers' ? 'active' : ''}`}
+              onClick={() => this.setState({ requestTab: 'headers' })}
+            >
+              Headers
+            </button>
+            <button
+              className={`tab-button ${requestTab === 'body' ? 'active' : ''}`}
+              onClick={() => this.setState({ requestTab: 'body' })}
+            >
+              Body
+            </button>
+          </div>
+          <div className="section-actions">
+            {editMode ? (
+              <>
+                <button className="action-button" onClick={this._sendEditedRequest}>
+                  <span>Send</span>
+                  <RepeatIcon />
+                </button>
+                <button className="action-button" onClick={this._cancelEdit}>
+                  <span>Cancel</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="action-button" onClick={this._startEdit}>
+                  <span>Edit & Repeat</span>
+                </button>
+                <button
+                  className={`action-button ${repeated ? 'repeated' : ''}`}
+                  onClick={() => {
+                    console.log('[UI] Repeat button clicked');
+                    this._repeatRequest();
+                  }}
+                >
+                  <span>{repeated ? 'Sent!' : 'Repeat'}</span>
+                  <RepeatIcon />
+                </button>
+                <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
+                  <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
+                  <CopyIcon />
+                </button>
+                <button className="action-button" onClick={this._toggleRequestExpand}>
+                  <span>{requestCollapsed === false ? 'Collapse' : 'Expand'}</span>
+                  {requestCollapsed === false ? <MinusIcon /> : <PlusIcon />}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="section-content">
+          {requestTab === 'headers' && this._renderRequestHeaders(rawRequest)}
+          {requestTab === 'body' && this._renderRequestBody(method, request, editMode, editedData, requestCollapsed)}
+        </div>
+      </div>
+    );
+  };
+
+  _renderResponseSection = (entry, heightPercent) => {
+    if (!entry) return null;
+
+    const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+    const entryToRender = cachedEntry || entry;
+    const { response, error } = entryToRender;
+    const { responseTab, responseCollapsed, responseCopied } = this.state;
+
+    const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
+    const rawRequest = rawCache?.get(entry.requestId);
+
+    return (
+      <div className="response-section" style={{ height: `${heightPercent}%` }}>
+        <div className="section-header">
+          <span className="section-title">Response</span>
+          <div className="section-tabs">
+            <button
+              className={`tab-button ${responseTab === 'headers' ? 'active' : ''}`}
+              onClick={() => this.setState({ responseTab: 'headers' })}
+            >
+              Headers
+            </button>
+            <button
+              className={`tab-button ${responseTab === 'body' ? 'active' : ''}`}
+              onClick={() => this.setState({ responseTab: 'body' })}
+            >
+              Body
+            </button>
+          </div>
+          <div className="section-actions">
+            <button className={`action-button ${responseCopied ? 'copied' : ''}`} onClick={this._copyResponseToClipboard}>
+              <span>{responseCopied ? 'Copied!' : 'Copy'}</span>
+              <CopyIcon />
+            </button>
+            <button className="action-button" onClick={this._toggleResponseExpand}>
+              <span>{responseCollapsed === false ? 'Collapse' : 'Expand'}</span>
+              {responseCollapsed === false ? <MinusIcon /> : <PlusIcon />}
+            </button>
+          </div>
+        </div>
+        <div className="section-content">
+          {responseTab === 'headers' && this._renderResponseHeaders(rawRequest)}
+          {responseTab === 'body' && this._renderResponseBody(response, error, responseCollapsed)}
+        </div>
+      </div>
+    );
+  };
 
   _renderSearchBar = (entry) => {
     if (!entry) return null;
@@ -236,6 +397,170 @@ class NetworkDetails extends Component {
     }
   };
 
+  _renderRequestHeaders = (rawRequest) => {
+    if (!rawRequest || !rawRequest.headers) {
+      return <div className="no-data">No request headers available</div>;
+    }
+
+    const headers = {};
+    if (Array.isArray(rawRequest.headers)) {
+      rawRequest.headers.forEach(h => {
+        headers[h.name] = h.value;
+      });
+    } else {
+      Object.assign(headers, rawRequest.headers);
+    }
+
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+
+    return (
+      <ReactJson
+        name={false}
+        theme={theme}
+        style={{ backgroundColor: "transparent" }}
+        enableClipboard={false}
+        collapsed={false}
+        displayDataTypes={false}
+        displayObjectSize={false}
+        src={headers}
+      />
+    );
+  };
+
+  _renderRequestBody = (method, request, editMode, editedData, collapsed) => {
+    if (!request) {
+      return <div className="no-data">No request body</div>;
+    }
+
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+    const src = editMode && editedData ? editedData.request : request;
+
+    return (
+      <ReactJson
+        name={false}
+        theme={theme}
+        style={{ backgroundColor: "transparent" }}
+        enableClipboard={false}
+        collapsed={editMode ? false : collapsed}
+        displayDataTypes={false}
+        displayObjectSize={false}
+        src={src}
+        onEdit={editMode ? this._onJsonEdit : false}
+        onAdd={editMode ? this._onJsonEdit : false}
+        onDelete={editMode ? this._onJsonEdit : false}
+      />
+    );
+  };
+
+  _renderResponseHeaders = (rawRequest) => {
+    if (!rawRequest || !rawRequest.responseHeaders) {
+      return <div className="no-data">Response headers not available</div>;
+    }
+
+    const headers = {};
+
+    // Add status info
+    if (rawRequest.responseStatus !== undefined) {
+      headers[':status'] = `${rawRequest.responseStatus}${rawRequest.responseStatusText ? ' ' + rawRequest.responseStatusText : ''}`;
+    }
+
+    // Add response headers
+    if (Array.isArray(rawRequest.responseHeaders)) {
+      rawRequest.responseHeaders.forEach(h => {
+        headers[h.name] = h.value;
+      });
+    }
+
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+
+    return (
+      <ReactJson
+        name={false}
+        theme={theme}
+        style={{ backgroundColor: "transparent" }}
+        enableClipboard={false}
+        collapsed={false}
+        displayDataTypes={false}
+        displayObjectSize={false}
+        src={headers}
+      />
+    );
+  };
+
+  _renderResponseBody = (response, error, collapsed) => {
+    if (error) {
+      const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+      return (
+        <ReactJson
+          name={false}
+          theme={theme}
+          style={{ backgroundColor: "transparent" }}
+          enableClipboard={false}
+          collapsed={collapsed}
+          displayDataTypes={false}
+          displayObjectSize={false}
+          src={error}
+        />
+      );
+    }
+
+    if (!response) {
+      return <div className="no-data">No response body</div>;
+    }
+
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+
+    return (
+      <ReactJson
+        name={false}
+        theme={theme}
+        style={{ backgroundColor: "transparent" }}
+        enableClipboard={false}
+        collapsed={collapsed}
+        displayDataTypes={false}
+        displayObjectSize={false}
+        src={response}
+      />
+    );
+  };
+
+  _toggleRequestExpand = () => {
+    this.setState((prevState) => ({
+      requestCollapsed: prevState.requestCollapsed === false ? 1 : false,
+    }));
+  };
+
+  _toggleResponseExpand = () => {
+    this.setState((prevState) => ({
+      responseCollapsed: prevState.responseCollapsed === false ? 1 : false,
+    }));
+  };
+
+  _handleMouseDown = (e) => {
+    e.preventDefault();
+    this.setState({ isDragging: true });
+  };
+
+  _handleMouseMove = (e) => {
+    if (!this.state.isDragging || !this.containerRef.current) return;
+
+    const container = this.containerRef.current;
+    const rect = container.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const percentage = (y / rect.height) * 100;
+
+    // Limit between 20% and 80%
+    const clampedPercentage = Math.min(Math.max(percentage, 20), 80);
+
+    this.setState({ splitPosition: clampedPercentage });
+  };
+
+  _handleMouseUp = () => {
+    if (this.state.isDragging) {
+      this.setState({ isDragging: false });
+    }
+  };
+
   _toggleExpandAll = () => {
     this.setState((prevState) => ({
       jsonCollapsed: prevState.jsonCollapsed === false ? 1 : false,
@@ -271,9 +596,13 @@ class NetworkDetails extends Component {
 
   _onJsonEdit = (edit) => {
     // edit object contains: { updated_src, name, namespace, new_value, existing_value }
-    this.setState({
-      editedData: edit.updated_src,
-    });
+    // updated_src is the updated request body
+    this.setState((prevState) => ({
+      editedData: {
+        ...prevState.editedData,
+        request: edit.updated_src,
+      },
+    }));
     return true; // Allow the edit
   };
 
@@ -631,6 +960,13 @@ class NetworkDetails extends Component {
 
     console.log('[Panel] Found raw request, URL:', rawRequest.url);
     console.log('[Panel] Body length (base64):', rawRequest.body?.length || 0);
+    console.log('[Panel] Body (first 100 chars):', rawRequest.body?.substring(0, 100) || 'EMPTY');
+    console.log('[Panel] Raw request object:', rawRequest);
+
+    if (!rawRequest.body || rawRequest.body.length === 0) {
+      console.error('[Panel] ✗ Raw request body is empty! Cannot repeat.');
+      return;
+    }
 
     // Prepare headers - only gRPC-specific and custom headers
     // Use WHITELIST approach to avoid CORS issues
@@ -669,17 +1005,29 @@ class NetworkDetails extends Component {
   const url = ${JSON.stringify(rawRequest.url)};
   const bodyBase64 = ${JSON.stringify(rawRequest.body)};
   const headers = ${JSON.stringify(headers)};
+  const grpcMethod = ${JSON.stringify(method)};
+  const requestData = ${JSON.stringify(request)};
+  const requestHeaders = ${JSON.stringify(rawRequest.headers)};
 
   // Convert base64 to Uint8Array
+  console.log('[Page] Starting base64 decode, input length:', bodyBase64.length);
   const binaryString = atob(bodyBase64);
+  console.log('[Page] Binary string length:', binaryString.length);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
 
-  console.log('[Page] Sending fetch to:', url);
-  console.log('[Page] Body length:', bytes.length);
+  console.log('[Page] ========== REPEAT REQUEST (Page Context) ==========');
+  console.log('[Page] URL:', url);
+  console.log('[Page] Body base64 length:', bodyBase64.length);
+  console.log('[Page] Body bytes length:', bytes.length);
+  console.log('[Page] Body first 20 bytes:', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
   console.log('[Page] Headers:', headers);
+  console.log('[Page] =======================================================');
+
+  // Generate request ID
+  const requestId = Math.floor(Math.random() * 1000000);
 
   // Send the request
   fetch(url, {
@@ -691,6 +1039,33 @@ class NetworkDetails extends Component {
   })
   .then(response => {
     console.log('[Page] Response status:', response.status);
+
+    // Store in window for panel to access
+    if (!window.__grpcWebDevtoolsRepeatCache) {
+      window.__grpcWebDevtoolsRepeatCache = new Map();
+    }
+    window.__grpcWebDevtoolsRepeatCache.set(requestId, {
+      url: url,
+      method: 'POST',
+      headers: requestHeaders,
+      body: bodyBase64,
+      encoding: 'base64'
+    });
+
+    console.log('[Page] Stored repeat request in cache, ID:', requestId);
+
+    // Post message to notify gRPC devtools
+    window.postMessage({
+      type: "__GRPCWEB_DEVTOOLS__",
+      method: grpcMethod,
+      methodType: "unary",
+      requestId: requestId,
+      request: requestData,
+      response: {}, // Response will be decoded by devtools if needed
+    }, "*");
+
+    console.log('[Page] Posted message to devtools, requestId:', requestId);
+
     return response.arrayBuffer();
   })
   .then(responseBody => {
@@ -698,6 +1073,19 @@ class NetworkDetails extends Component {
   })
   .catch(err => {
     console.error('[Page] Fetch failed:', err);
+
+    // Post error message
+    window.postMessage({
+      type: "__GRPCWEB_DEVTOOLS__",
+      method: grpcMethod,
+      methodType: "unary",
+      requestId: requestId,
+      request: requestData,
+      error: {
+        code: 0,
+        message: err.message
+      }
+    }, "*");
   });
 })();
 `;
@@ -707,28 +1095,96 @@ class NetworkDetails extends Component {
         console.error('[Panel] Failed to execute fetch in page:', exceptionInfo);
       } else {
         console.log('[Panel] ✓ Fetch triggered in page context');
+        console.log('[Panel] Request will appear in gRPC list via window.postMessage');
 
-        // Notify that request completed
-        const port = window.__GRPCWEB_DEVTOOLS_PORT__;
-        if (port) {
-          port.postMessage({
-            action: "notifyRepeat",
-            target: "content",
-            tabId: window.__GRPCWEB_DEVTOOLS_TAB_ID__,
-            data: {
-              requestId: newRequestId,
-              grpcMethod: method,
-              request: request,
-              response: entryToRender.response || {},
-              status: 200
-            }
-          });
-        }
-
+        // Show "Sent!" feedback
         this.setState({ repeated: true });
         setTimeout(() => this.setState({ repeated: false }), 2000);
       }
     });
+  };
+
+  _copyRequestToClipboard = () => {
+    const { entry } = this.props;
+    if (!entry) return;
+
+    const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+    const entryToRender = cachedEntry || entry;
+    const { request } = entryToRender;
+
+    if (!request) return;
+
+    try {
+      const jsonString = JSON.stringify(request, null, 2);
+
+      const textarea = document.createElement('textarea');
+      textarea.value = jsonString;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+
+      textarea.select();
+      textarea.setSelectionRange(0, jsonString.length);
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          this.setState({ requestCopied: true });
+          setTimeout(() => {
+            this.setState({ requestCopied: false });
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Failed to copy request:', err);
+      }
+
+      document.body.removeChild(textarea);
+    } catch (e) {
+      console.error('Failed to stringify request:', e);
+    }
+  };
+
+  _copyResponseToClipboard = () => {
+    const { entry } = this.props;
+    if (!entry) return;
+
+    const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+    const entryToRender = cachedEntry || entry;
+    const { response, error } = entryToRender;
+
+    const data = error || response;
+    if (!data) return;
+
+    try {
+      const jsonString = JSON.stringify(data, null, 2);
+
+      const textarea = document.createElement('textarea');
+      textarea.value = jsonString;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+
+      textarea.select();
+      textarea.setSelectionRange(0, jsonString.length);
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          this.setState({ responseCopied: true });
+          setTimeout(() => {
+            this.setState({ responseCopied: false });
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Failed to copy response:', err);
+      }
+
+      document.body.removeChild(textarea);
+    } catch (e) {
+      console.error('Failed to stringify response:', e);
+    }
   };
 
   _copyToClipboard = () => {
@@ -747,7 +1203,6 @@ class NetworkDetails extends Component {
     try {
       const jsonString = JSON.stringify(src, null, 2);
 
-      // Create a temporary textarea element
       const textarea = document.createElement('textarea');
       textarea.value = jsonString;
       textarea.style.position = 'fixed';
@@ -755,14 +1210,12 @@ class NetworkDetails extends Component {
       textarea.style.top = '0';
       document.body.appendChild(textarea);
 
-      // Select and copy
       textarea.select();
       textarea.setSelectionRange(0, jsonString.length);
 
       try {
         const successful = document.execCommand('copy');
         if (successful) {
-          // Show "Copied!" feedback
           this.setState({ copied: true });
           setTimeout(() => {
             this.setState({ copied: false });
@@ -772,7 +1225,6 @@ class NetworkDetails extends Component {
         console.error('Failed to copy JSON:', err);
       }
 
-      // Remove the textarea
       document.body.removeChild(textarea);
     } catch (e) {
       console.error('Failed to stringify JSON:', e);

@@ -162,6 +162,9 @@ if (chrome && chrome.devtools && chrome.devtools.network) {
             url: request.request.url,
             method: request.request.method,
             headers: request.request.headers,
+            responseHeaders: request.response.headers,
+            responseStatus: request.response.status,
+            responseStatusText: request.response.statusText,
             body: body, // Keep original body
             encoding: encoding // 'base64' or empty string
           });
