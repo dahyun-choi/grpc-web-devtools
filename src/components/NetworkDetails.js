@@ -128,18 +128,45 @@ class NetworkDetails extends Component {
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { method, request } = entryToRender;
+    const { method, request, requestId } = entryToRender;
     const { requestTab, requestCollapsed, editMode, editedData, repeated, requestCopied } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
-    const rawRequest = rawCache?.get(entry.requestId);
+
+    // Try to get raw request using same fallback strategy as Repeat
+    let rawRequest = null;
+
+    // Strategy 1: Use requestId
+    if (requestId !== undefined) {
+      rawRequest = rawCache?.get(requestId);
+    }
+
+    // Strategy 2: Use entryId
+    if (!rawRequest && entry.entryId !== undefined) {
+      rawRequest = rawCache?.get(entry.entryId);
+    }
+
+    // Strategy 3: URL-based matching
+    if (!rawRequest && method && rawCache) {
+      for (const [cacheKey, cacheValue] of rawCache.entries()) {
+        if (cacheValue.url === method ||
+            cacheValue.url.includes(method) ||
+            method.includes(cacheValue.url)) {
+          rawRequest = cacheValue;
+          break;
+        }
+      }
+    }
 
     // DEBUG: Log raw cache status
     console.log('[NetworkDetails] Rendering request section');
-    console.log('[NetworkDetails] Entry requestId:', entry.requestId);
+    console.log('[NetworkDetails] Entry requestId:', requestId);
+    console.log('[NetworkDetails] Entry entryId:', entry.entryId);
+    console.log('[NetworkDetails] Entry method:', method);
     console.log('[NetworkDetails] Raw cache exists:', !!rawCache);
     console.log('[NetworkDetails] Raw cache size:', rawCache?.size);
     console.log('[NetworkDetails] Raw request found:', !!rawRequest);
+    console.log('[NetworkDetails] Raw request has headers:', !!rawRequest?.headers);
     console.log('[NetworkDetails] Raw request has body:', !!rawRequest?.body);
     if (rawRequest) {
       console.log('[NetworkDetails] Raw request keys:', Object.keys(rawRequest));
@@ -219,11 +246,35 @@ class NetworkDetails extends Component {
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { response, error } = entryToRender;
+    const { method, response, error, requestId } = entryToRender;
     const { responseTab, responseCollapsed, responseCopied } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
-    const rawRequest = rawCache?.get(entry.requestId);
+
+    // Try to get raw request using same fallback strategy
+    let rawRequest = null;
+
+    // Strategy 1: Use requestId
+    if (requestId !== undefined) {
+      rawRequest = rawCache?.get(requestId);
+    }
+
+    // Strategy 2: Use entryId
+    if (!rawRequest && entry.entryId !== undefined) {
+      rawRequest = rawCache?.get(entry.entryId);
+    }
+
+    // Strategy 3: URL-based matching
+    if (!rawRequest && method && rawCache) {
+      for (const [cacheKey, cacheValue] of rawCache.entries()) {
+        if (cacheValue.url === method ||
+            cacheValue.url.includes(method) ||
+            method.includes(cacheValue.url)) {
+          rawRequest = cacheValue;
+          break;
+        }
+      }
+    }
 
     return (
       <div className="response-section" style={{ height: `${heightPercent}%` }}>

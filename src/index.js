@@ -64,8 +64,8 @@ if (chrome) {
     debuggerCapture = new DebuggerCapture(tabId, (requestId, rawData) => {
       console.log('[DebuggerCapture] Raw request callback:', requestId);
 
-      // Add to raw cache
-      addToRawCache(requestId, {
+      // Prepare cache entry
+      const cacheEntry = {
         url: rawData.url,
         method: rawData.method,
         headers: Object.keys(rawData.headers || {}).map(key => ({
@@ -74,7 +74,20 @@ if (chrome) {
         })),
         body: rawData.body,
         encoding: rawData.encoding
-      });
+      };
+
+      // Add response headers if available
+      if (rawData.responseHeaders) {
+        cacheEntry.responseStatus = rawData.responseStatus;
+        cacheEntry.responseStatusText = rawData.responseStatusText;
+        cacheEntry.responseHeaders = Object.keys(rawData.responseHeaders).map(key => ({
+          name: key,
+          value: rawData.responseHeaders[key]
+        }));
+      }
+
+      // Add to raw cache
+      addToRawCache(requestId, cacheEntry);
     });
 
     // Enable debugger capture

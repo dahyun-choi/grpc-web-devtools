@@ -175,11 +175,24 @@ class DebuggerCapture {
   _handleResponseReceived(params) {
     const { requestId, response } = params;
 
-    // Could update request map with response info if needed
+    // Update request map with response info
     const requestData = this.requestMap.get(requestId);
     if (requestData) {
       requestData.responseStatus = response.status;
+      requestData.responseStatusText = response.statusText;
       requestData.responseHeaders = response.headers;
+
+      console.log('[DebuggerCapture] ✓ Captured response headers:', {
+        requestId,
+        url: requestData.url,
+        status: response.status,
+        headersCount: Object.keys(response.headers || {}).length
+      });
+
+      // Update cache via callback
+      if (this.onRawRequest) {
+        this.onRawRequest(requestId, requestData);
+      }
     }
   }
 
