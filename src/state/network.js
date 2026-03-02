@@ -158,6 +158,9 @@ function buildSummaryEntry(entry) {
     }
   } else if (entry.response) {
     statusCode = 0; // OK
+  } else if (entry.responseBodyBase64 && entry.responseStatus === 200) {
+    // HTTP 200 but response not decoded yet - still OK
+    statusCode = 0; // OK
   }
 
   return {

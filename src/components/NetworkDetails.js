@@ -1072,7 +1072,10 @@ class NetworkDetails extends Component {
     mode: 'cors'
   })
   .then(response => {
-    console.log('[Page] Edit & Repeat - Response received, status:', response.status);
+    console.log('[Page] Edit & Repeat - Response received, status:', response.status, 'ok:', response.ok);
+
+    const responseStatus = response.status;
+    const responseOk = response.ok;
 
     return response.arrayBuffer().then(responseBody => {
       // Convert response body to base64
@@ -1083,7 +1086,7 @@ class NetworkDetails extends Component {
       }
       const responseBodyBase64 = btoa(binary);
 
-      console.log('[Page] Edit & Repeat - Posting message with responseBodyBase64');
+      console.log('[Page] Edit & Repeat - Posting message with responseBodyBase64, status:', responseStatus);
 
       // Send response body base64 for panel to decode
       window.postMessage({
@@ -1093,6 +1096,8 @@ class NetworkDetails extends Component {
         requestId: requestId,
         request: requestData,
         responseBodyBase64: responseBodyBase64,
+        responseStatus: responseStatus,
+        responseOk: responseOk,
         isRepeat: true,
       }, "*");
     });

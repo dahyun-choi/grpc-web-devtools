@@ -413,9 +413,97 @@ function _onMessageRecived({ action, data }) {
     console.log('[Index] Request ID:', data.requestId);
     console.log('[Index] Method:', data.method);
     console.log('[Index] Request data:', data.request);
+    console.log('[Index] Full data object:', JSON.stringify(data, null, 2));
+
+    // Check HTTP response status
+    if (data.responseStatus !== undefined) {
+      console.log('[Index] ✓ HTTP response status found:', data.responseStatus, 'ok:', data.responseOk);
+
+      // If HTTP status is not OK (200), treat as error
+      if (!data.responseOk || data.responseStatus !== 200) {
+        console.log('[Index] HTTP error detected, status:', data.responseStatus);
+        data.error = {
+          code: 13, // gRPC INTERNAL error
+          message: `HTTP ${data.responseStatus}`
+        };
+        // Don't try to decode response body on error
+      } else {
+        console.log('[Index] ✓ HTTP 200 OK, will attempt to decode response');
+      }
+    } else {
+      console.log('[Index] ⚠ No responseStatus in data');
+    }
+
+    // Check if responseBodyBase64 exists and needs decoding
+    if (data.responseBodyBase64 && !data.response && !data.error) {
+      console.log('[Index] responseBodyBase64 found, attempting to decode...');
+      console.log('[Index] Base64 length:', data.responseBodyBase64.length);
+
+      try {
+        // Decode base64 to bytes
+        const binaryString = atob(data.responseBodyBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        console.log('[Index] Decoded bytes length:', bytes.length);
+        console.log('[Index] First 20 bytes (hex):', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        // Try to decode with ProtoManager if available
+        if (protoManager.isReady()) {
+          console.log('[Index] ProtoManager ready, attempting to decode response');
+
+          // Parse gRPC-web frame format: [1 byte flags][4 bytes message length][message bytes]
+          if (bytes.length > 5) {
+            const compressionFlag = bytes[0];
+            const messageLength = (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4];
+            const messageBytes = bytes.slice(5, 5 + messageLength);
+
+            console.log('[Index] Compression flag:', compressionFlag);
+            console.log('[Index] Message length:', messageLength);
+            console.log('[Index] Message bytes length:', messageBytes.length);
+
+            // Get message type info
+            const typeInfo = protoManager.getMessageType(data.method);
+            if (typeInfo && typeInfo.responseType) {
+              console.log('[Index] Response type:', typeInfo.responseType.name);
+
+              // Decode the message using manualDecode
+              const decoded = protoManager.manualDecode(typeInfo.responseType, messageBytes);
+              if (decoded) {
+                data.response = decoded;
+                console.log('[Index] ✓ Successfully decoded response:', decoded);
+              } else {
+                console.warn('[Index] manualDecode returned null');
+              }
+            } else {
+              console.warn('[Index] Could not find responseType for method:', data.method);
+            }
+          } else {
+            console.warn('[Index] Response too short for gRPC-web frame format:', bytes.length);
+          }
+        } else {
+          console.warn('[Index] ProtoManager not ready, cannot decode response');
+          console.warn('[Index] Upload proto files in Settings to see decoded responses');
+        }
+      } catch (error) {
+        console.error('[Index] Failed to decode responseBodyBase64:', error);
+      }
+    }
+
+    console.log('[Index] ========== Before logNetworkEntry ==========');
+    console.log('[Index] data.request:', !!data.request);
+    console.log('[Index] data.response:', !!data.response);
+    console.log('[Index] data.error:', !!data.error);
+    console.log('[Index] data.responseBodyBase64:', !!data.responseBodyBase64);
 
     const fullEntry = store.dispatch(logNetworkEntry(data));
+
+    console.log('[Index] ========== After logNetworkEntry ==========');
     console.log('[Index] Created entry with entryId:', fullEntry.entryId);
+    console.log('[Index] Entry has response:', !!fullEntry.response);
+    console.log('[Index] Entry has error:', !!fullEntry.error);
 
     // Link entryId with most recent unlinked raw request
     // This handles the case where same URL has multiple simultaneous requests
