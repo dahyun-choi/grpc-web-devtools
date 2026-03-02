@@ -353,18 +353,32 @@ function handlePortMessage(message) {
     const requestId = data.requestId || Math.floor(Math.random() * 1000000);
     console.log('[Content Script] Using requestId:', requestId);
 
+    // Decode response body if available
+    let responseData = data.response;
+    if (!responseData || Object.keys(responseData).length === 0) {
+      // If decoded response is empty but we have raw body, try to decode it
+      if (data.responseBodyBase64) {
+        console.log('[Content Script] Decoded response empty, using raw body');
+        // For now, keep the decoded response empty
+        // The body will be displayed as raw base64 or decoded later
+        responseData = data.response || {};
+      }
+    }
+
     const payload = {
       type: "__GRPCWEB_DEVTOOLS__",
       method: data.grpcMethod,
       methodType: "unary",
       requestId: requestId,
       request: data.request,
-      response: data.response
+      response: responseData,
+      responseBodyBase64: data.responseBodyBase64 // Pass through for storage
     };
 
     console.log('[Content Script] ========== PAYLOAD TO POST ==========');
     console.log('[Content Script] Request:', JSON.stringify(payload.request, null, 2));
     console.log('[Content Script] Response:', JSON.stringify(payload.response, null, 2));
+    console.log('[Content Script] Response body base64 length:', data.responseBodyBase64?.length || 0);
     console.log('[Content Script] =====================================');
 
     // Post message to page context

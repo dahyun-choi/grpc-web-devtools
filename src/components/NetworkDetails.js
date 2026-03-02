@@ -947,6 +947,21 @@ class NetworkDetails extends Component {
         console.log('[Panel] Response body received, size:', responseBody.byteLength);
 
         let decodedResponse = null;
+        let responseBodyBase64 = null;
+
+        // Convert response body to base64 for storage
+        function arrayBufferToBase64(buffer) {
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return btoa(binary);
+        }
+
+        // Always save raw response body
+        responseBodyBase64 = arrayBufferToBase64(responseBody);
+        console.log('[Panel] Saved response body as base64, length:', responseBodyBase64.length);
 
         // Try to decode response if ProtoManager is ready (optional)
         if (protoManager.isReady()) {
@@ -1012,11 +1027,24 @@ class NetworkDetails extends Component {
           console.log('[Panel] Response data:', decodedResponse);
           console.log('[Panel] ================================================');
 
+          // If we couldn't decode response but have raw body, create a minimal response object
+          let responseToSend = decodedResponse;
+          if (!responseToSend && responseBodyBase64) {
+            // Create a placeholder response indicating raw data is available
+            responseToSend = {
+              __raw_base64__: responseBodyBase64,
+              __note__: 'Response received but could not be decoded. Upload proto files to view decoded response.'
+            };
+            console.log('[Panel] Using raw base64 response (not decoded)');
+          } else if (!responseToSend) {
+            responseToSend = {};
+          }
+
           const messageData = {
             requestId: newRequestId,
             grpcMethod: method,
             request: editedData.request,
-            response: decodedResponse || {},
+            response: responseToSend,
             status: response.status
           };
 
@@ -1261,17 +1289,8 @@ class NetworkDetails extends Component {
       encoding: 'base64'
     });
 
-    // Post message to notify gRPC devtools
-    // Mark as repeat to avoid confusion with concurrent requests
-    window.postMessage({
-      type: "__GRPCWEB_DEVTOOLS__",
-      method: grpcMethod,
-      methodType: "unary",
-      requestId: requestId,
-      request: requestData,
-      response: {}, // Response will be decoded by devtools if needed
-      isRepeat: true, // Mark this as a repeat request
-    }, "*");
+    // Don't send initial postMessage - wait for response
+    // The response postMessage below will include both request and response
 
     // Also send raw request data for caching
     // Use the URL to derive the method name
@@ -1288,10 +1307,29 @@ class NetworkDetails extends Component {
       }
     }, '*');
 
-    return response.arrayBuffer();
-  })
-  .then(responseBody => {
-    // Response processed
+    return response.arrayBuffer().then(responseBody => {
+      // Convert response body to base64
+      const bytes = new Uint8Array(responseBody);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const responseBodyBase64 = btoa(binary);
+
+      // Update the initial postMessage with response body
+      window.postMessage({
+        type: "__GRPCWEB_DEVTOOLS__",
+        method: grpcMethod,
+        methodType: "unary",
+        requestId: requestId,
+        request: requestData,
+        response: {
+          __raw_base64__: responseBodyBase64,
+          __note__: 'Response received. Upload proto files to view decoded response.'
+        },
+        isRepeat: true,
+      }, "*");
+    });
   })
   .catch(err => {
     console.error('[Page] Fetch failed:', err);
