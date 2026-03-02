@@ -108,7 +108,9 @@ class DebuggerCapture {
       requestId,
       url,
       method,
-      hasPostData: !!postData
+      hasPostData: !!postData,
+      postDataType: typeof postData,
+      postDataLength: postData?.length
     });
 
     // Store request data
@@ -126,8 +128,29 @@ class DebuggerCapture {
 
     // Convert body to base64 if present
     if (postData) {
-      // postData is a string, encode to base64
-      const bodyBase64 = btoa(unescape(encodeURIComponent(postData)));
+      // postData from Chrome DevTools Protocol is a string that may contain binary data
+      // For gRPC (protobuf), this is binary data encoded as Latin-1 string
+      // We need to preserve it exactly as-is
+      let bodyBase64;
+
+      try {
+        // Direct btoa - postData should already be a binary string (Latin-1)
+        bodyBase64 = btoa(postData);
+
+        // Log first few bytes for debugging
+        const firstBytes = postData.substring(0, Math.min(20, postData.length))
+          .split('')
+          .map(c => c.charCodeAt(0).toString(16).padStart(2, '0'))
+          .join(' ');
+        console.log('[DebuggerCapture] First 20 bytes (hex):', firstBytes);
+      } catch (e) {
+        console.error('[DebuggerCapture] btoa failed, trying fallback:', e);
+        // Fallback: if btoa fails, try encoding via Uint8Array
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(postData);
+        const binaryString = String.fromCharCode.apply(null, bytes);
+        bodyBase64 = btoa(binaryString);
+      }
 
       rawRequestData.body = bodyBase64;
       rawRequestData.encoding = 'base64';
@@ -135,7 +158,9 @@ class DebuggerCapture {
       console.log('[DebuggerCapture] ✓ Captured raw request body:', {
         requestId,
         url,
-        bodyLength: bodyBase64.length
+        bodyLength: bodyBase64.length,
+        originalLength: postData.length,
+        ratio: (bodyBase64.length / postData.length).toFixed(2)
       });
 
       // Call the callback with raw request data
