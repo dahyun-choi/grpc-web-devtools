@@ -460,9 +460,6 @@ setInterval(function() {
     } catch (e) {
       console.error('[Page] Failed to execute repeat:', e);
     }
-    } catch (e) {
-      console.error('[Page] Failed to parse repeat data:', e);
-    }
 
     return;
   }
