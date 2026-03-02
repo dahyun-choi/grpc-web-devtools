@@ -10,6 +10,7 @@ import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/netwo
 import toolbarReducer from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
+import DebuggerCapture from './utils/DebuggerCapture';
 
 var port, tabId
 
@@ -56,6 +57,40 @@ if (chrome) {
     _setupPort();
     chrome.tabs.onUpdated.addListener(_onTabUpdated);
     window.addEventListener('unload', _cleanupListeners);
+
+    // Initialize DebuggerCapture for reliable raw request capture
+    console.log('[Index] Initializing DebuggerCapture for tab:', tabId);
+
+    debuggerCapture = new DebuggerCapture(tabId, (requestId, rawData) => {
+      console.log('[DebuggerCapture] Raw request callback:', requestId);
+
+      // Add to raw cache
+      addToRawCache(requestId, {
+        url: rawData.url,
+        method: rawData.method,
+        headers: Object.keys(rawData.headers || {}).map(key => ({
+          name: key,
+          value: rawData.headers[key]
+        })),
+        body: rawData.body,
+        encoding: rawData.encoding
+      });
+    });
+
+    // Enable debugger capture
+    debuggerCapture.enable().then(() => {
+      console.log('[Index] ✓ DebuggerCapture enabled');
+    }).catch(err => {
+      console.error('[Index] Failed to enable DebuggerCapture:', err);
+      console.log('[Index] Falling back to traditional interceptor method');
+    });
+
+    // Cleanup on unload
+    window.addEventListener('unload', () => {
+      if (debuggerCapture) {
+        debuggerCapture.disable();
+      }
+    });
   } catch (error) {
     console.warn("not running app in chrome extension panel")
   }
@@ -78,7 +113,81 @@ const store = configureStore({
 
 // Store raw HTTP requests for repeat functionality
 const rawRequestsCache = new Map();
-const MAX_RAW_CACHE_SIZE = 500; // Increased from default
+const MAX_RAW_CACHE_SIZE = 500;
+
+// DebuggerCapture instance for reliable raw request capture
+let debuggerCapture = null;
+const STORAGE_KEYS = {
+  RAW_CACHE: 'grpc_devtools_raw_cache_v1',
+  RAW_CACHE_METADATA: 'grpc_devtools_raw_cache_metadata_v1'
+};
+const MAX_STORAGE_AGE_DAYS = 7; // 7일 이상 데이터 자동 삭제
+
+let saveTimeout = null;
+
+// Save raw cache to chrome.storage.local
+async function saveRawCacheToStorage() {
+  try {
+    const cacheArray = Array.from(rawRequestsCache.entries()).map(([id, data]) => ({
+      id,
+      data,
+      timestamp: Date.now()
+    }));
+
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.RAW_CACHE]: cacheArray,
+      [STORAGE_KEYS.RAW_CACHE_METADATA]: {
+        lastSaved: Date.now(),
+        count: cacheArray.length
+      }
+    });
+
+    console.log('[Index] ✓ Saved raw cache to storage:', cacheArray.length, 'entries');
+  } catch (error) {
+    console.error('[Index] Failed to save raw cache:', error);
+  }
+}
+
+// Load raw cache from chrome.storage.local
+async function loadRawCacheFromStorage() {
+  try {
+    const result = await chrome.storage.local.get([
+      STORAGE_KEYS.RAW_CACHE,
+      STORAGE_KEYS.RAW_CACHE_METADATA
+    ]);
+
+    if (result[STORAGE_KEYS.RAW_CACHE]) {
+      const cacheArray = result[STORAGE_KEYS.RAW_CACHE];
+      const now = Date.now();
+      const maxAge = MAX_STORAGE_AGE_DAYS * 24 * 60 * 60 * 1000;
+
+      // Filter out old entries
+      const validEntries = cacheArray.filter(entry => {
+        const age = now - (entry.timestamp || 0);
+        return age < maxAge;
+      });
+
+      // IMPORTANT: Do NOT restore cache from storage for now
+      // Storage can have corrupted/mismatched data from previous sessions
+      // Only use fresh raw requests captured in current session
+      console.log('[Index] ⚠ Skipping storage restore to prevent ID mismatch');
+      console.log('[Index] Found', validEntries.length, 'entries in storage (not restored)');
+
+      // Clear corrupted storage
+      await chrome.storage.local.remove([STORAGE_KEYS.RAW_CACHE, STORAGE_KEYS.RAW_CACHE_METADATA]);
+      console.log('[Index] ✓ Cleared storage cache');
+
+      /* Disabled for now - causes ID mismatch
+      rawRequestsCache.clear();
+      validEntries.forEach(entry => {
+        rawRequestsCache.set(entry.id, entry.data);
+      });
+      */
+    }
+  } catch (error) {
+    console.error('[Index] Failed to load raw cache:', error);
+  }
+}
 
 function addToRawCache(requestId, data) {
   // Remove oldest entries if cache is too large
@@ -90,7 +199,36 @@ function addToRawCache(requestId, data) {
 
   rawRequestsCache.set(requestId, data);
   console.log('[Index] ✓ Cached raw request for ID:', requestId, 'Cache size:', rawRequestsCache.size);
+
+  // Debounced save (5초 후 저장, 연속 호출 시 지연)
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveRawCacheToStorage();
+  }, 5000);
 }
+
+// Load raw cache from storage on startup
+if (chrome && chrome.storage) {
+  loadRawCacheFromStorage()
+    .then(() => {
+      console.log('[Index] Raw cache initialization complete');
+    })
+    .catch(err => {
+      console.error('[Index] Failed to load raw cache from storage:', err);
+    });
+}
+
+// Save before unload
+window.addEventListener('beforeunload', () => {
+  saveRawCacheToStorage();
+});
+
+// Periodic save (30초마다)
+setInterval(() => {
+  if (rawRequestsCache.size > 0) {
+    saveRawCacheToStorage();
+  }
+}, 30000);
 
 // Listen to network requests to capture raw body
 if (chrome && chrome.devtools && chrome.devtools.network) {
@@ -116,58 +254,41 @@ if (chrome && chrome.devtools && chrome.devtools.network) {
     if (isGrpc) {
       console.log('[Index] gRPC request detected, getting content');
 
+      // NOTE: request.getContent() returns RESPONSE body, not request body!
+      // We don't use it for request body - only grpc-web-interceptor.js provides request body
+      // But we still call it to store response headers
       request.getContent(function(body, encoding) {
-        console.log('[Index] Got content, encoding:', encoding, 'body type:', typeof body, 'body length:', body?.length);
-
-        if (body && body.length > 0) {
-          console.log('[Index] Body first 50 chars:', body.substring(0, 50));
-        }
+        console.log('[Index] Got RESPONSE content (not request), length:', body?.length);
 
         // Find matching requestId from our store
         const state = store.getState();
-        console.log('[Index] Network log entries:', state.network.log.length);
 
         // Find matching entries by URL
         const matchingEntries = state.network.log.filter(entry => {
-          // entry.method can be:
-          // - "https://example.com/package.Service/MethodName" (URL format)
-          // - "package.Service/MethodName" (clean format)
-
-          // Simple match: exact URL match or URL contains method
           const urlMatch = entry.method === request.request.url ||
                           request.request.url === entry.method ||
                           request.request.url.includes(entry.method) ||
                           entry.method.includes(request.request.url);
-
           return urlMatch;
         });
 
         console.log('[Index] Found', matchingEntries.length, 'matching entries for URL:', request.request.url);
 
-        // Get the most recent matching entry (last in the log) that doesn't have a cached request yet
+        // Get the most recent matching entry that doesn't have response headers yet
         const matchingEntry = matchingEntries.reverse().find(entry => {
-          return !rawRequestsCache.has(entry.requestId);
+          const cached = rawRequestsCache.get(entry.requestId);
+          return cached && !cached.responseHeaders;
         });
 
         if (matchingEntry) {
-          console.log('[Index] ✓ Matched entry:', matchingEntry.requestId, matchingEntry.method);
-        } else {
-          console.warn('[Index] ✗ No matching entry found for URL:', request.request.url);
-          console.log('[Index] Available entries:', state.network.log.map(e => ({ id: e.requestId, method: e.method })).slice(-5));
-        }
-
-        if (matchingEntry) {
-          // Store the raw body exactly as received
-          addToRawCache(matchingEntry.requestId, {
-            url: request.request.url,
-            method: request.request.method,
-            headers: request.request.headers,
-            responseHeaders: request.response.headers,
-            responseStatus: request.response.status,
-            responseStatusText: request.response.statusText,
-            body: body, // Keep original body
-            encoding: encoding // 'base64' or empty string
-          });
+          console.log('[Index] ✓ Adding response headers for entry:', matchingEntry.requestId);
+          const cached = rawRequestsCache.get(matchingEntry.requestId);
+          if (cached) {
+            // Add response headers to existing cache entry
+            cached.responseHeaders = request.response.headers;
+            cached.responseStatus = request.response.status;
+            cached.responseStatusText = request.response.statusText;
+          }
         }
       });
     }
@@ -189,6 +310,8 @@ function _onMessageRecived({ action, data }) {
     console.log('[Index] Request data:', data.request);
 
     store.dispatch(logNetworkEntry(data));
+    console.log('[Index] Raw cache size:', rawRequestsCache.size);
+    console.log('[Index] Raw cache keys:', Array.from(rawRequestsCache.keys()));
     console.log('[Index] ================================================');
   } else if (action === "gRPCRawRequest") {
     console.log('[Index] ========== Raw Request Received ==========');
@@ -218,6 +341,7 @@ function _onMessageRecived({ action, data }) {
 
       console.log('[Index] ✓ Cached RAW request body for ID:', data.requestId);
       console.log('[Index] Cache size:', rawRequestsCache.size);
+      console.log('[Index] All cached IDs:', Array.from(rawRequestsCache.keys()));
 
       // Log first few bytes
       if (rawReq.body && rawReq.encoding === 'base64') {

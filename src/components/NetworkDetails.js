@@ -16,6 +16,8 @@ import "./NetworkDetails.css";
 const LARGE_PAYLOAD_BYTES = 1024 * 1024;
 const VERY_LARGE_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
+// Removed arrayBufferToBase64 - now defined inline where needed
+
 function formatBytes(value) {
   if (!Number.isFinite(value)) return "";
   if (value < 1024) return `${value} B`;
@@ -132,6 +134,17 @@ class NetworkDetails extends Component {
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
     const rawRequest = rawCache?.get(entry.requestId);
 
+    // DEBUG: Log raw cache status
+    console.log('[NetworkDetails] Rendering request section');
+    console.log('[NetworkDetails] Entry requestId:', entry.requestId);
+    console.log('[NetworkDetails] Raw cache exists:', !!rawCache);
+    console.log('[NetworkDetails] Raw cache size:', rawCache?.size);
+    console.log('[NetworkDetails] Raw request found:', !!rawRequest);
+    console.log('[NetworkDetails] Raw request has body:', !!rawRequest?.body);
+    if (rawRequest) {
+      console.log('[NetworkDetails] Raw request keys:', Object.keys(rawRequest));
+    }
+
     return (
       <div className="request-section" style={{ height: `${heightPercent}%` }}>
         <div className="section-header">
@@ -170,8 +183,13 @@ class NetworkDetails extends Component {
                   className={`action-button ${repeated ? 'repeated' : ''}`}
                   onClick={() => {
                     console.log('[UI] Repeat button clicked');
+                    console.log('[UI] Entry:', entry);
+                    console.log('[UI] Raw request:', rawRequest);
                     this._repeatRequest();
                   }}
+                  title={rawRequest?.body
+                    ? 'Repeat this request with original body'
+                    : 'Cannot repeat: Original body not available (will show error)'}
                 >
                   <span>{repeated ? 'Sent!' : 'Repeat'}</span>
                   <RepeatIcon />
@@ -836,7 +854,7 @@ class NetworkDetails extends Component {
             // Parse gRPC-web frame
             const responseBytes = new Uint8Array(responseBody);
             if (responseBytes.length > 5) {
-              const compressionFlag = responseBytes[0];
+              // const compressionFlag = responseBytes[0]; // Not currently used
               const messageLength = (responseBytes[1] << 24) | (responseBytes[2] << 16) | (responseBytes[3] << 8) | responseBytes[4];
               const messageBytes = responseBytes.slice(5, 5 + messageLength);
 
@@ -937,13 +955,9 @@ class NetworkDetails extends Component {
     const entryToRender = cachedEntry || entry;
     const { requestId, method, request } = entryToRender;
 
-    console.log('[Panel] Request ID:', requestId);
+    console.log('[Panel] Entry ID:', entry.entryId);
+    console.log('[Panel] Request ID from entry:', requestId);
     console.log('[Panel] Method:', method);
-
-    if (!requestId) {
-      console.warn('[Panel] No request ID');
-      return;
-    }
 
     // Get raw request from cache
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
@@ -952,11 +966,75 @@ class NetworkDetails extends Component {
       return;
     }
 
-    const rawRequest = rawCache.get(requestId);
+    console.log('[Panel] Raw cache size:', rawCache.size);
+    console.log('[Panel] Available request IDs in cache:', Array.from(rawCache.keys()));
+
+    // Try multiple lookup strategies:
+    // 1. Try requestId (if available)
+    // 2. Try entryId
+    // 3. Try URL-based matching (for DebuggerCapture)
+    let rawRequest = null;
+    let lookupId = null;
+
+    // Strategy 1: Use requestId from entry
+    if (requestId !== undefined) {
+      rawRequest = rawCache.get(requestId);
+      if (rawRequest) {
+        lookupId = requestId;
+        console.log('[Panel] ✓ Found by requestId:', requestId);
+      }
+    }
+
+    // Strategy 2: Use entryId
+    if (!rawRequest && entry.entryId !== undefined) {
+      rawRequest = rawCache.get(entry.entryId);
+      if (rawRequest) {
+        lookupId = entry.entryId;
+        console.log('[Panel] ✓ Found by entryId:', entry.entryId);
+      }
+    }
+
+    // Strategy 3: URL-based matching (for DebuggerCapture which uses Chrome requestId)
+    if (!rawRequest && method) {
+      console.log('[Panel] Attempting URL-based lookup for:', method);
+
+      // Iterate through cache to find matching URL
+      for (const [cacheKey, cacheValue] of rawCache.entries()) {
+        if (cacheValue.url === method || cacheValue.url.includes(method) || method.includes(cacheValue.url)) {
+          rawRequest = cacheValue;
+          lookupId = cacheKey;
+          console.log('[Panel] ✓ Found by URL match:', {
+            cacheKey,
+            cacheUrl: cacheValue.url,
+            entryMethod: method
+          });
+          break;
+        }
+      }
+    }
+
     if (!rawRequest) {
-      console.error('[Panel] Raw request not found for ID:', requestId);
+      console.error('[Panel] Raw request not found after all strategies');
+      console.warn('[Panel] Cache contents:', Array.from(rawCache.entries()).map(([k, v]) => ({
+        id: k,
+        type: typeof k,
+        url: v.url
+      })));
+
+      // NO FALLBACK: Repeat requires raw request body
+      console.error('[Panel] Cannot repeat: Raw request body not available');
+      alert(
+        'Cannot repeat this request: Original request body is not available.\n\n' +
+        'This can happen if:\n' +
+        '• The request was captured before DevTools was opened\n' +
+        '• The request is too old (cache limit reached)\n' +
+        '• The page was refreshed\n\n' +
+        'Please trigger a new request to capture the body.'
+      );
       return;
     }
+
+    console.log('[Panel] ✓ Using lookup ID:', lookupId, 'Type:', typeof lookupId);
 
     console.log('[Panel] Found raw request, URL:', rawRequest.url);
     console.log('[Panel] Body length (base64):', rawRequest.body?.length || 0);
@@ -993,10 +1071,24 @@ class NetworkDetails extends Component {
       });
     }
 
-    console.log('[Panel] Prepared', Object.keys(headers).length, 'headers');
+    console.log('[Panel] Prepared', Object.keys(headers).length, 'headers (from', rawRequest.headers?.length || 0, 'original)');
+    console.log('[Panel] Original headers:', rawRequest.headers?.map(h => h.name).join(', '));
+    console.log('[Panel] Repeat headers:', Object.keys(headers).join(', '));
+    console.log('[Panel] Body encoding:', rawRequest.encoding);
 
-    // Generate new request ID
-    const newRequestId = Math.floor(Math.random() * 1000000);
+    // Decode and log first 20 bytes for comparison
+    if (rawRequest.body && rawRequest.encoding === 'base64') {
+      try {
+        const binaryString = atob(rawRequest.body.substring(0, 100));
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < Math.min(20, binaryString.length); i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        console.log('[Panel] Repeat request first 20 bytes:', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      } catch (e) {
+        console.warn('[Panel] Could not decode body:', e);
+      }
+    }
 
     // Execute fetch in PAGE CONTEXT using inspectedWindow.eval
     // This is critical - fetch must run in page context, not panel context
@@ -1010,21 +1102,11 @@ class NetworkDetails extends Component {
   const requestHeaders = ${JSON.stringify(rawRequest.headers)};
 
   // Convert base64 to Uint8Array
-  console.log('[Page] Starting base64 decode, input length:', bodyBase64.length);
   const binaryString = atob(bodyBase64);
-  console.log('[Page] Binary string length:', binaryString.length);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
-
-  console.log('[Page] ========== REPEAT REQUEST (Page Context) ==========');
-  console.log('[Page] URL:', url);
-  console.log('[Page] Body base64 length:', bodyBase64.length);
-  console.log('[Page] Body bytes length:', bytes.length);
-  console.log('[Page] Body first 20 bytes:', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-  console.log('[Page] Headers:', headers);
-  console.log('[Page] =======================================================');
 
   // Generate request ID
   const requestId = Math.floor(Math.random() * 1000000);
@@ -1038,8 +1120,6 @@ class NetworkDetails extends Component {
     mode: 'cors'
   })
   .then(response => {
-    console.log('[Page] Response status:', response.status);
-
     // Store in window for panel to access
     if (!window.__grpcWebDevtoolsRepeatCache) {
       window.__grpcWebDevtoolsRepeatCache = new Map();
@@ -1052,9 +1132,8 @@ class NetworkDetails extends Component {
       encoding: 'base64'
     });
 
-    console.log('[Page] Stored repeat request in cache, ID:', requestId);
-
     // Post message to notify gRPC devtools
+    // Mark as repeat to avoid confusion with concurrent requests
     window.postMessage({
       type: "__GRPCWEB_DEVTOOLS__",
       method: grpcMethod,
@@ -1062,14 +1141,28 @@ class NetworkDetails extends Component {
       requestId: requestId,
       request: requestData,
       response: {}, // Response will be decoded by devtools if needed
+      isRepeat: true, // Mark this as a repeat request
     }, "*");
 
-    console.log('[Page] Posted message to devtools, requestId:', requestId);
+    // Also send raw request data for caching
+    // Use the URL to derive the method name
+    window.postMessage({
+      type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+      requestId: requestId,
+      grpcMethod: grpcMethod, // Add method for matching
+      rawRequest: {
+        url: url,
+        method: 'POST',
+        headers: requestHeaders,
+        body: bodyBase64,
+        encoding: 'base64'
+      }
+    }, '*');
 
     return response.arrayBuffer();
   })
   .then(responseBody => {
-    console.log('[Page] Response body length:', responseBody.byteLength);
+    // Response processed
   })
   .catch(err => {
     console.error('[Page] Fetch failed:', err);
@@ -1084,7 +1177,8 @@ class NetworkDetails extends Component {
       error: {
         code: 0,
         message: err.message
-      }
+      },
+      isRepeat: true, // Mark as repeat
     }, "*");
   });
 })();
