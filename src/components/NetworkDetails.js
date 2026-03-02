@@ -146,15 +146,40 @@ class NetworkDetails extends Component {
       rawRequest = rawCache?.get(entry.entryId);
     }
 
-    // Strategy 3: URL-based matching
+    // Strategy 3: Composite key (URL@timestamp) - precise matching
+    if (!rawRequest && method && entryToRender.timestamp && rawCache) {
+      const compositeKey = `${method}@${entryToRender.timestamp}`;
+      rawRequest = rawCache.get(compositeKey);
+      if (rawRequest) {
+        console.log('[NetworkDetails] ✓ Composite key match:', compositeKey);
+      }
+    }
+
+    // Strategy 4: URL-based matching with timestamp proximity
+    // For same URL, select the one closest to entry's timestamp
     if (!rawRequest && method && rawCache) {
+      let bestMatch = null;
+      let bestMatchScore = Infinity;
+      const entryTimestamp = entryToRender.timestamp || Date.now();
+
       for (const [cacheKey, cacheValue] of rawCache.entries()) {
         if (cacheValue.url === method ||
             cacheValue.url.includes(method) ||
             method.includes(cacheValue.url)) {
-          rawRequest = cacheValue;
-          break;
+          // Calculate time difference (prefer closest timestamp)
+          const cacheTimestamp = cacheValue.timestamp || 0;
+          const timeDiff = Math.abs(entryTimestamp - cacheTimestamp);
+
+          if (timeDiff < bestMatchScore) {
+            bestMatchScore = timeDiff;
+            bestMatch = cacheValue;
+          }
         }
+      }
+
+      if (bestMatch) {
+        rawRequest = bestMatch;
+        console.log('[NetworkDetails] URL match: selected by timestamp diff:', bestMatchScore, 'ms');
       }
     }
 
@@ -264,15 +289,40 @@ class NetworkDetails extends Component {
       rawRequest = rawCache?.get(entry.entryId);
     }
 
-    // Strategy 3: URL-based matching
+    // Strategy 3: Composite key (URL@timestamp) - precise matching
+    if (!rawRequest && method && entryToRender.timestamp && rawCache) {
+      const compositeKey = `${method}@${entryToRender.timestamp}`;
+      rawRequest = rawCache.get(compositeKey);
+      if (rawRequest) {
+        console.log('[NetworkDetails] ✓ Composite key match:', compositeKey);
+      }
+    }
+
+    // Strategy 4: URL-based matching with timestamp proximity
+    // For same URL, select the one closest to entry's timestamp
     if (!rawRequest && method && rawCache) {
+      let bestMatch = null;
+      let bestMatchScore = Infinity;
+      const entryTimestamp = entryToRender.timestamp || Date.now();
+
       for (const [cacheKey, cacheValue] of rawCache.entries()) {
         if (cacheValue.url === method ||
             cacheValue.url.includes(method) ||
             method.includes(cacheValue.url)) {
-          rawRequest = cacheValue;
-          break;
+          // Calculate time difference (prefer closest timestamp)
+          const cacheTimestamp = cacheValue.timestamp || 0;
+          const timeDiff = Math.abs(entryTimestamp - cacheTimestamp);
+
+          if (timeDiff < bestMatchScore) {
+            bestMatchScore = timeDiff;
+            bestMatch = cacheValue;
+          }
         }
+      }
+
+      if (bestMatch) {
+        rawRequest = bestMatch;
+        console.log('[NetworkDetails] URL match: selected by timestamp diff:', bestMatchScore, 'ms');
       }
     }
 
@@ -1045,22 +1095,50 @@ class NetworkDetails extends Component {
       }
     }
 
-    // Strategy 3: URL-based matching (for DebuggerCapture which uses Chrome requestId)
+    // Strategy 3: Composite key (URL@timestamp) - precise matching
+    if (!rawRequest && method && entryToRender.timestamp) {
+      const compositeKey = `${method}@${entryToRender.timestamp}`;
+      rawRequest = rawCache.get(compositeKey);
+      if (rawRequest) {
+        lookupId = compositeKey;
+        console.log('[Panel] ✓ Found by composite key:', compositeKey);
+      }
+    }
+
+    // Strategy 4: URL-based matching with timestamp proximity
+    // For same URL, select the one closest to entry's timestamp
     if (!rawRequest && method) {
       console.log('[Panel] Attempting URL-based lookup for:', method);
 
-      // Iterate through cache to find matching URL
+      let bestMatch = null;
+      let bestMatchKey = null;
+      let bestMatchScore = Infinity;
+      const entryTimestamp = entryToRender.timestamp || Date.now();
+
+      // Iterate through cache to find matching URL with closest timestamp
       for (const [cacheKey, cacheValue] of rawCache.entries()) {
         if (cacheValue.url === method || cacheValue.url.includes(method) || method.includes(cacheValue.url)) {
-          rawRequest = cacheValue;
-          lookupId = cacheKey;
-          console.log('[Panel] ✓ Found by URL match:', {
-            cacheKey,
-            cacheUrl: cacheValue.url,
-            entryMethod: method
-          });
-          break;
+          // Calculate time difference (prefer closest timestamp)
+          const cacheTimestamp = cacheValue.timestamp || 0;
+          const timeDiff = Math.abs(entryTimestamp - cacheTimestamp);
+
+          if (timeDiff < bestMatchScore) {
+            bestMatchScore = timeDiff;
+            bestMatch = cacheValue;
+            bestMatchKey = cacheKey;
+          }
         }
+      }
+
+      if (bestMatch) {
+        rawRequest = bestMatch;
+        lookupId = bestMatchKey;
+        console.log('[Panel] ✓ Found by URL match with timestamp proximity:', {
+          cacheKey: bestMatchKey,
+          cacheUrl: bestMatch.url,
+          entryMethod: method,
+          timestampDiff: bestMatchScore + ' ms'
+        });
       }
     }
 

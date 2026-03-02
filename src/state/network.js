@@ -182,6 +182,11 @@ export const logNetworkEntry = (data) => (dispatch) => {
 export const clearLogAndCache = (payload) => (dispatch) => {
   clearNetworkCache();
   dispatch(clearLog(payload));
+
+  // Clear raw requests cache (both memory and storage)
+  if (window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__) {
+    window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__();
+  }
 };
 
 function searchInJSON(obj, searchText) {

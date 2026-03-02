@@ -73,7 +73,8 @@ if (chrome) {
           value: rawData.headers[key]
         })),
         body: rawData.body,
-        encoding: rawData.encoding
+        encoding: rawData.encoding,
+        timestamp: rawData.timestamp // Include timestamp for composite key matching
       };
 
       // Add response headers if available
@@ -210,7 +211,17 @@ function addToRawCache(requestId, data) {
     console.log('[Index] Raw cache full, removed oldest entry:', firstKey);
   }
 
+  // Store with Chrome requestId as primary key
   rawRequestsCache.set(requestId, data);
+
+  // ALSO store with URL+timestamp composite key for precise matching
+  // This allows finding the exact request when same URL has multiple calls
+  if (data.url && data.timestamp) {
+    const compositeKey = `${data.url}@${data.timestamp}`;
+    rawRequestsCache.set(compositeKey, data);
+    console.log('[Index] ✓ Cached with composite key:', compositeKey);
+  }
+
   console.log('[Index] ✓ Cached raw request for ID:', requestId, 'Cache size:', rawRequestsCache.size);
 
   // Debounced save (5초 후 저장, 연속 호출 시 지연)
@@ -312,8 +323,25 @@ if (chrome && chrome.devtools && chrome.devtools.network) {
   console.error('[Index] chrome.devtools.network not available');
 }
 
-// Expose cache to window for repeat functionality
+// Expose cache and clear function to window for repeat functionality
 window.__GRPCWEB_DEVTOOLS_RAW_CACHE__ = rawRequestsCache;
+
+// Expose clear function for clearing raw cache (called from Toolbar clear button)
+window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__ = function() {
+  rawRequestsCache.clear();
+  console.log('[Index] Raw cache cleared via clear function');
+
+  // Clear storage
+  if (chrome && chrome.storage) {
+    chrome.storage.local.remove([STORAGE_KEYS.RAW_CACHE, STORAGE_KEYS.RAW_CACHE_METADATA])
+      .then(() => {
+        console.log('[Index] ✓ Cleared raw cache from storage');
+      })
+      .catch(err => {
+        console.error('[Index] Failed to clear storage cache:', err);
+      });
+  }
+};
 
 function _onMessageRecived({ action, data }) {
   if (action === "gRPCNetworkCall") {
@@ -379,6 +407,11 @@ function _onTabUpdated(tId, { status }) {
     const state = store.getState();
     if (!state.network.preserveLog) {
       store.dispatch(clearLogAndCache());
+
+      // Clear raw requests cache using exposed function
+      if (window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__) {
+        window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__();
+      }
     }
   }
 }
