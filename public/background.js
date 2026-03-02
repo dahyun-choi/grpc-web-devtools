@@ -29,6 +29,12 @@ chrome.runtime.onConnect.addListener(port => {
       return;
     }
 
+    // Handle ping messages (health check)
+    if (message.action == "ping") {
+      // Just acknowledge - connection is alive
+      return;
+    }
+
     // Handle triggerRepeat action
     if (message.action == "triggerRepeat") {
       console.log('[Background] Received triggerRepeat for tab:', tabId);

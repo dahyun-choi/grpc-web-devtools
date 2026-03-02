@@ -293,15 +293,43 @@ var fallbackRequestId = 1;
 
 function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
-    port = chrome.runtime.connect(null, { name: "content" });
-    port.postMessage({ action: "init" });
-    port.onMessage.addListener(handlePortMessage);
-    port.onDisconnect.addListener(() => {
+    try {
+      port = chrome.runtime.connect(null, { name: "content" });
+      port.postMessage({ action: "init" });
+      port.onMessage.addListener(handlePortMessage);
+      port.onDisconnect.addListener(() => {
+        console.log('[Content Script] Port disconnected');
+        port = null;
+        // Try to reconnect after a short delay
+        setTimeout(() => {
+          console.log('[Content Script] Attempting to reconnect...');
+          setupPortIfNeeded();
+        }, 1000);
+      });
+      console.log('[Content Script] Port connected successfully');
+    } catch (err) {
+      console.error('[Content Script] Failed to setup port:', err);
       port = null;
-      window.removeEventListener("message", handleMessageEvent, false);
-    });
+    }
   }
 }
+
+// Periodically check port health and reconnect if needed
+setInterval(() => {
+  if (port) {
+    try {
+      // Try to send a ping to verify connection
+      port.postMessage({ action: "ping" });
+    } catch (err) {
+      console.warn('[Content Script] Port health check failed, reconnecting...', err);
+      port = null;
+      setupPortIfNeeded();
+    }
+  } else {
+    // Port is null, try to reconnect
+    setupPortIfNeeded();
+  }
+}, 5000); // Check every 5 seconds
 
 function handlePortMessage(message) {
   console.log('[Content Script] ========== MESSAGE RECEIVED ==========');

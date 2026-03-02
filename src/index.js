@@ -58,6 +58,29 @@ if (chrome) {
     chrome.tabs.onUpdated.addListener(_onTabUpdated);
     window.addEventListener('unload', _cleanupListeners);
 
+    // Handle DevTools panel visibility changes
+    // When panel becomes visible again, reconnect port to ensure message delivery
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        console.log('[Index] Panel became visible, checking port connection');
+
+        // Check if port is still connected by trying to send a ping
+        try {
+          if (port) {
+            port.postMessage({ tabId, action: 'ping' });
+            console.log('[Index] Port still connected');
+          } else {
+            console.log('[Index] Port is null, reconnecting...');
+            _setupPort();
+          }
+        } catch (err) {
+          console.error('[Index] Port ping failed, reconnecting...', err);
+          _cleanupListeners();
+          _setupPort();
+        }
+      }
+    });
+
     // Initialize DebuggerCapture for reliable raw request capture
     console.log('[Index] Initializing DebuggerCapture for tab:', tabId);
 
