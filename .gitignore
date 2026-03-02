@@ -40,3 +40,17 @@ dist
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# testing artifacts
+playwright-report/
+playwright-profile/
+test-results/
+*.log
+
+# temporary test files
+test-*.js
+auto-debug.js
+check-cache.js
+debug-helper.html
+verify-build.js
+BUILD_SUMMARY.md
