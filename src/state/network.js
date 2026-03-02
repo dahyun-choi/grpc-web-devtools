@@ -177,6 +177,7 @@ function buildSummaryEntry(entry) {
 export const logNetworkEntry = (data) => (dispatch) => {
   const fullEntry = addNetworkEntry(data);
   dispatch(networkLog(buildSummaryEntry(fullEntry)));
+  return fullEntry; // Return for linking with raw cache
 };
 
 export const clearLogAndCache = (payload) => (dispatch) => {

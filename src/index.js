@@ -203,6 +203,46 @@ async function loadRawCacheFromStorage() {
   }
 }
 
+// Track which raw requests have been linked to entries
+const linkedRawRequests = new Set();
+
+function findMostRecentRawRequestByUrl(url, entryTimestamp) {
+  let bestMatch = null;
+  let bestMatchKey = null;
+  let bestTimeDiff = Infinity;
+
+  for (const [key, value] of rawRequestsCache.entries()) {
+    // Skip if already linked to an entry
+    if (linkedRawRequests.has(key)) {
+      continue;
+    }
+
+    // Skip non-Chrome requestId keys (composite keys, entryId keys)
+    if (typeof key === 'number' || key.includes('@')) {
+      continue;
+    }
+
+    // Check URL match
+    if (value.url === url || value.url.includes(url) || url.includes(value.url)) {
+      const timeDiff = Math.abs((value.timestamp || 0) - entryTimestamp);
+
+      if (timeDiff < bestTimeDiff) {
+        bestTimeDiff = timeDiff;
+        bestMatch = value;
+        bestMatchKey = key;
+      }
+    }
+  }
+
+  if (bestMatch && bestMatchKey) {
+    // Mark as linked
+    linkedRawRequests.add(bestMatchKey);
+    console.log('[Index] Found unlinked raw request:', bestMatchKey, 'time diff:', bestTimeDiff, 'ms');
+  }
+
+  return bestMatch;
+}
+
 function addToRawCache(requestId, data) {
   // Remove oldest entries if cache is too large
   if (rawRequestsCache.size >= MAX_RAW_CACHE_SIZE) {
@@ -329,7 +369,8 @@ window.__GRPCWEB_DEVTOOLS_RAW_CACHE__ = rawRequestsCache;
 // Expose clear function for clearing raw cache (called from Toolbar clear button)
 window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__ = function() {
   rawRequestsCache.clear();
-  console.log('[Index] Raw cache cleared via clear function');
+  linkedRawRequests.clear();
+  console.log('[Index] Raw cache and linked requests cleared via clear function');
 
   // Clear storage
   if (chrome && chrome.storage) {
@@ -350,7 +391,22 @@ function _onMessageRecived({ action, data }) {
     console.log('[Index] Method:', data.method);
     console.log('[Index] Request data:', data.request);
 
-    store.dispatch(logNetworkEntry(data));
+    const fullEntry = store.dispatch(logNetworkEntry(data));
+    console.log('[Index] Created entry with entryId:', fullEntry.entryId);
+
+    // Link entryId with most recent unlinked raw request
+    // This handles the case where same URL has multiple simultaneous requests
+    if (fullEntry && fullEntry.method) {
+      const matchingRawRequest = findMostRecentRawRequestByUrl(fullEntry.method, fullEntry.timestamp);
+      if (matchingRawRequest) {
+        // Store raw request with entryId as key for direct lookup
+        rawRequestsCache.set(fullEntry.entryId, matchingRawRequest);
+        console.log('[Index] ✓ Linked entryId', fullEntry.entryId, 'with raw request');
+      } else {
+        console.log('[Index] ⚠ No matching raw request found for entryId:', fullEntry.entryId);
+      }
+    }
+
     console.log('[Index] Raw cache size:', rawRequestsCache.size);
     console.log('[Index] Raw cache keys:', Array.from(rawRequestsCache.keys()));
     console.log('[Index] ================================================');
