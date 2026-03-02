@@ -760,15 +760,18 @@ class NetworkDetails extends Component {
     console.log('[Panel] Original request:', JSON.stringify(originalRequest, null, 2));
     console.log('[Panel] Edited request:', JSON.stringify(editedData.request, null, 2));
 
-    // Show differences
+    // Show differences and detect if anything was actually changed
+    let hasChanges = false;
     if (originalRequest && editedData.request) {
       console.log('[Panel] Changes:');
       Object.keys(editedData.request).forEach(key => {
         if (JSON.stringify(originalRequest[key]) !== JSON.stringify(editedData.request[key])) {
           console.log(`  - ${key}: ${JSON.stringify(originalRequest[key])} -> ${JSON.stringify(editedData.request[key])}`);
+          hasChanges = true;
         }
       });
     }
+    console.log('[Panel] Has changes:', hasChanges);
     console.log('[Panel] ===============================================');
 
     if (!requestId) {
@@ -776,22 +779,116 @@ class NetworkDetails extends Component {
       return;
     }
 
-    // Get raw request from cache
+    // Get raw request from cache using multiple strategies (same as _repeatRequest)
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
     if (!rawCache) {
       console.error('[Panel] Raw cache not available');
       return;
     }
 
-    const rawRequest = rawCache.get(requestId);
+    console.log('[Panel] Raw cache size:', rawCache.size);
+    console.log('[Panel] Available request IDs in cache:', Array.from(rawCache.keys()));
+
+    // Try multiple lookup strategies:
+    // 1. Try requestId (if available)
+    // 2. Try entryId
+    // 3. Try URL-based matching (for DebuggerCapture)
+    let rawRequest = null;
+    let lookupId = null;
+
+    // Strategy 1: Use requestId from entry
+    if (requestId !== undefined) {
+      rawRequest = rawCache.get(requestId);
+      if (rawRequest) {
+        lookupId = requestId;
+        console.log('[Panel] ✓ Found by requestId:', requestId);
+      }
+    }
+
+    // Strategy 2: Use entryId
+    if (!rawRequest && entry.entryId !== undefined) {
+      rawRequest = rawCache.get(entry.entryId);
+      if (rawRequest) {
+        lookupId = entry.entryId;
+        console.log('[Panel] ✓ Found by entryId:', entry.entryId);
+      }
+    }
+
+    // Strategy 3: Composite key (URL@timestamp) - precise matching
+    if (!rawRequest && method && entryToRender.timestamp) {
+      const compositeKey = `${method}@${entryToRender.timestamp}`;
+      rawRequest = rawCache.get(compositeKey);
+      if (rawRequest) {
+        lookupId = compositeKey;
+        console.log('[Panel] ✓ Found by composite key:', compositeKey);
+      }
+    }
+
+    // Strategy 4: URL-based matching with timestamp proximity
+    if (!rawRequest && method) {
+      console.log('[Panel] Attempting URL-based lookup for:', method);
+
+      let bestMatch = null;
+      let bestMatchKey = null;
+      let bestMatchScore = Infinity;
+      const entryTimestamp = entryToRender.timestamp || Date.now();
+
+      // Iterate through cache to find matching URL with closest timestamp
+      for (const [cacheKey, cacheValue] of rawCache.entries()) {
+        if (cacheValue.url === method || cacheValue.url.includes(method) || method.includes(cacheValue.url)) {
+          // Calculate time difference (prefer closest timestamp)
+          const cacheTimestamp = cacheValue.timestamp || 0;
+          const timeDiff = Math.abs(entryTimestamp - cacheTimestamp);
+
+          if (timeDiff < bestMatchScore) {
+            bestMatchScore = timeDiff;
+            bestMatch = cacheValue;
+            bestMatchKey = cacheKey;
+          }
+        }
+      }
+
+      if (bestMatch) {
+        rawRequest = bestMatch;
+        lookupId = bestMatchKey;
+        console.log('[Panel] ✓ Found by URL match with timestamp proximity:', {
+          cacheKey: bestMatchKey,
+          cacheUrl: bestMatch.url,
+          entryMethod: method,
+          timestampDiff: bestMatchScore + ' ms'
+        });
+      }
+    }
+
     if (!rawRequest) {
-      console.error('[Panel] Raw request not found for ID:', requestId);
-      console.log('[Panel] Available IDs:', Array.from(rawCache.keys()));
+      console.error('[Panel] Raw request not found after all strategies');
+      console.warn('[Panel] Cache contents:', Array.from(rawCache.entries()).map(([k, v]) => ({
+        id: k,
+        type: typeof k,
+        url: v.url
+      })));
+
+      alert(
+        'Cannot send edited request: Original request body is not available.\n\n' +
+        'This can happen if:\n' +
+        '• The request was captured before DevTools was opened\n' +
+        '• The request is too old (cache limit reached)\n' +
+        '• The page was refreshed\n\n' +
+        'Please trigger a new request to capture the body.'
+      );
       return;
     }
 
+    console.log('[Panel] ✓ Using lookup ID:', lookupId, 'Type:', typeof lookupId);
     console.log('[Panel] Found raw request:', rawRequest.url);
+    console.log('[Panel] Body length (base64):', rawRequest.body?.length || 0);
+    console.log('[Panel] Body (first 100 chars):', rawRequest.body?.substring(0, 100) || 'EMPTY');
     console.log('[Panel] Edited request data:', editedData.request);
+
+    if (!rawRequest.body || rawRequest.body.length === 0) {
+      console.error('[Panel] ✗ Raw request body is empty! Cannot send edited request.');
+      return;
+    }
 
     // Prepare headers - same as repeat request
     const allowedHeaders = [
@@ -859,8 +956,24 @@ class NetworkDetails extends Component {
     // Try to encode edited request data to protobuf
     let body;
 
-    if (protoManager.isReady()) {
-      console.log('[Panel] ProtoManager is ready, encoding edited request');
+    // Helper function to convert base64 to ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // If no changes, use original body directly
+    if (!hasChanges) {
+      console.log('[Panel] No changes detected, using original request body');
+      body = rawRequest.encoding === 'base64'
+        ? base64ToArrayBuffer(rawRequest.body)
+        : rawRequest.body;
+    } else if (protoManager.isReady()) {
+      console.log('[Panel] Changes detected, ProtoManager is ready, encoding edited request');
       console.log('[Panel] Using method for encoding:', method);
 
       try {
@@ -871,7 +984,7 @@ class NetworkDetails extends Component {
           // Build gRPC-web frame with compression if needed
           const frame = protoManager.buildGrpcWebFrame(messageBytes, needsCompression);
           body = frame.buffer;
-          console.log('[Panel] Encoded and framed message, size:', body.byteLength, 'compressed:', needsCompression);
+          console.log('[Panel] ✓ Encoded and framed message, size:', body.byteLength, 'compressed:', needsCompression);
         } else {
           throw new Error('Failed to encode message');
         }
@@ -880,33 +993,16 @@ class NetworkDetails extends Component {
         console.warn('[Panel] Falling back to original request body');
 
         // Fallback to original body
-        function base64ToArrayBuffer(base64) {
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          return bytes.buffer;
-        }
-
         body = rawRequest.encoding === 'base64'
           ? base64ToArrayBuffer(rawRequest.body)
           : rawRequest.body;
       }
     } else {
-      console.warn('[Panel] ProtoManager not ready. Upload proto files in Settings first.');
-      console.warn('[Panel] Using original request body.');
+      console.warn('[Panel] Changes detected but ProtoManager not ready.');
+      console.warn('[Panel] Upload proto files in Settings to encode edited requests.');
+      console.warn('[Panel] Using original request body for now.');
 
       // Use original body
-      function base64ToArrayBuffer(base64) {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-      }
-
       body = rawRequest.encoding === 'base64'
         ? base64ToArrayBuffer(rawRequest.body)
         : rawRequest.body;
@@ -916,159 +1012,122 @@ class NetworkDetails extends Component {
     console.log('[Panel] Sending fetch to:', rawRequest.url);
     console.log('[Panel] Headers:', headers);
 
-    // Generate new request ID for the repeated request
-    const newRequestId = Math.floor(Math.random() * 1000000);
-    console.log('[Panel] Generated new request ID:', newRequestId);
-
-    // IMPORTANT: Save the request body before fetch, because we'll need it later
-    const requestBodyToCache = body;
-
-    // Send the request
-    fetch(rawRequest.url, {
-      method: rawRequest.method,
-      headers: headers,
-      body: body,
-      credentials: 'omit'
-    })
-    .then(response => {
-      console.log('[Panel] ✓ Fetch completed with status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        // Read response body for error details
-        return response.text().then(text => {
-          console.error('[Panel] Response error body:', text);
-          throw new Error(`HTTP ${response.status}: ${response.statusText}\n${text}`);
-        });
+    // Convert body to base64 for passing to page context
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
+      return btoa(binary);
+    }
 
-      // Read and decode response body
-      return response.arrayBuffer().then(responseBody => {
-        console.log('[Panel] ========== DECODING RESPONSE ==========');
-        console.log('[Panel] Response body received, size:', responseBody.byteLength);
+    const bodyBase64 = arrayBufferToBase64(body);
+    console.log('[Panel] Body as base64, length:', bodyBase64.length);
 
-        let decodedResponse = null;
-        let responseBodyBase64 = null;
+    // Execute fetch in PAGE CONTEXT using inspectedWindow.eval
+    // This is critical - fetch must run in page context, not panel context
+    const code = `
+(function() {
+  const url = ${JSON.stringify(rawRequest.url)};
+  const bodyBase64 = ${JSON.stringify(bodyBase64)};
+  const headers = ${JSON.stringify(headers)};
+  const grpcMethod = ${JSON.stringify(method)};
+  const requestData = ${JSON.stringify(editedData.request)};
+  const requestHeaders = ${JSON.stringify(rawRequest.headers)};
 
-        // Convert response body to base64 for storage
-        function arrayBufferToBase64(buffer) {
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          return btoa(binary);
-        }
+  console.log('[Page] Edit & Repeat - Converting base64 to bytes');
+  // Convert base64 to Uint8Array
+  const binaryString = atob(bodyBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
 
-        // Always save raw response body
-        responseBodyBase64 = arrayBufferToBase64(responseBody);
-        console.log('[Panel] Saved response body as base64, length:', responseBodyBase64.length);
+  console.log('[Page] Edit & Repeat - Sending fetch, body length:', bytes.length);
 
-        // Try to decode response if ProtoManager is ready (optional)
-        if (protoManager.isReady()) {
-          console.log('[Panel] ProtoManager is ready, attempting to decode response');
-          try {
-            // Parse gRPC-web frame
-            const responseBytes = new Uint8Array(responseBody);
-            if (responseBytes.length > 5) {
-              // const compressionFlag = responseBytes[0]; // Not currently used
-              const messageLength = (responseBytes[1] << 24) | (responseBytes[2] << 16) | (responseBytes[3] << 8) | responseBytes[4];
-              const messageBytes = responseBytes.slice(5, 5 + messageLength);
+  // Generate request ID
+  const requestId = Math.floor(Math.random() * 1000000);
 
-              // Get message type info
-              const typeInfo = protoManager.getMessageType(method);
+  // Send raw request data for caching
+  window.postMessage({
+    type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+    requestId: requestId,
+    grpcMethod: grpcMethod,
+    rawRequest: {
+      url: url,
+      method: 'POST',
+      headers: requestHeaders,
+      body: bodyBase64,
+      encoding: 'base64'
+    }
+  }, '*');
 
-              if (typeInfo && typeInfo.responseType) {
-                // Use manual decode to avoid CSP eval() violation
-                decodedResponse = protoManager.manualDecode(typeInfo.responseType, messageBytes);
-                console.log('[Panel] ✓ Decoded response:', decodedResponse);
-              }
-            }
-          } catch (decodeError) {
-            console.warn('[Panel] Response decode failed (non-critical):', decodeError.message);
-          }
-        }
-        // Response decoding is optional - repeat works without it
+  // Send the request
+  fetch(url, {
+    method: 'POST',
+    headers: headers,
+    body: bytes,
+    credentials: 'include',
+    mode: 'cors'
+  })
+  .then(response => {
+    console.log('[Page] Edit & Repeat - Response received, status:', response.status);
 
-        // Add to rawRequestsCache so it can be repeated again
-        const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
-        if (rawCache) {
-          console.log('[Panel] Adding new request to rawCache with ID:', newRequestId);
+    return response.arrayBuffer().then(responseBody => {
+      // Convert response body to base64
+      const responseBytes = new Uint8Array(responseBody);
+      let binary = '';
+      for (let i = 0; i < responseBytes.byteLength; i++) {
+        binary += String.fromCharCode(responseBytes[i]);
+      }
+      const responseBodyBase64 = btoa(binary);
 
-          // Convert ArrayBuffer to base64 for storage
-          function arrayBufferToBase64(buffer) {
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-          }
+      console.log('[Page] Edit & Repeat - Posting message with responseBodyBase64');
 
-          // IMPORTANT: Use the saved REQUEST body, not the response body!
-          const bodyBase64 = arrayBufferToBase64(requestBodyToCache);
+      // Send response body base64 for panel to decode
+      window.postMessage({
+        type: "__GRPCWEB_DEVTOOLS__",
+        method: grpcMethod,
+        methodType: "unary",
+        requestId: requestId,
+        request: requestData,
+        responseBodyBase64: responseBodyBase64,
+        isRepeat: true,
+      }, "*");
+    });
+  })
+  .catch(err => {
+    console.error('[Page] Edit & Repeat - Fetch failed:', err);
 
-          rawCache.set(newRequestId, {
-            url: rawRequest.url,
-            method: rawRequest.method,
-            headers: rawRequest.headers,
-            body: bodyBase64,
-            encoding: 'base64'
-          });
-          console.log('[Panel] ✓ Added to cache with base64 REQUEST body, size:', rawCache.size);
-        }
+    // Post error message
+    window.postMessage({
+      type: "__GRPCWEB_DEVTOOLS__",
+      method: grpcMethod,
+      methodType: "unary",
+      requestId: requestId,
+      request: requestData,
+      error: {
+        code: 0,
+        message: err.message
+      },
+      isRepeat: true,
+    }, "*");
+  });
+})();
+`;
 
-        // Notify content script to post message
-        const port = window.__GRPCWEB_DEVTOOLS_PORT__;
-        if (port) {
-          console.log('[Panel] ========== SENDING TO CONTENT SCRIPT ==========');
-          console.log('[Panel] Request ID:', newRequestId);
-          console.log('[Panel] Method:', method);
-          console.log('[Panel] Request data:', editedData.request);
-          console.log('[Panel] Response data:', decodedResponse);
-          console.log('[Panel] ================================================');
-
-          // If we couldn't decode response but have raw body, create a minimal response object
-          let responseToSend = decodedResponse;
-          if (!responseToSend && responseBodyBase64) {
-            // Create a placeholder response indicating raw data is available
-            responseToSend = {
-              __raw_base64__: responseBodyBase64,
-              __note__: 'Response received but could not be decoded. Upload proto files to view decoded response.'
-            };
-            console.log('[Panel] Using raw base64 response (not decoded)');
-          } else if (!responseToSend) {
-            responseToSend = {};
-          }
-
-          const messageData = {
-            requestId: newRequestId,
-            grpcMethod: method,
-            request: editedData.request,
-            response: responseToSend,
-            status: response.status
-          };
-
-          port.postMessage({
-            action: "notifyRepeat",
-            target: "content",
-            tabId: window.__GRPCWEB_DEVTOOLS_TAB_ID__,
-            data: messageData
-          });
-        } else {
-          console.warn('[Panel] Port not available for notification');
-        }
+    chrome.devtools.inspectedWindow.eval(code, (result, exceptionInfo) => {
+      if (exceptionInfo) {
+        console.error('[Panel] Failed to execute fetch in page:', exceptionInfo);
+      } else {
+        console.log('[Panel] ✓ Fetch triggered in page context');
+        console.log('[Panel] Request will appear in gRPC list via window.postMessage');
 
         // Show "Sent!" feedback and exit edit mode
-        console.log('[Panel] ✓ Request sent successfully!');
         this.setState({ repeated: true, editMode: false, editedData: null });
-        setTimeout(() => {
-          this.setState({ repeated: false });
-        }, 2000);
-      });
-    })
-    .catch(err => {
-      console.error('[Panel] ✗ Edit & Repeat request FAILED:', err);
-      console.error('[Panel] Error stack:', err.stack);
+        setTimeout(() => this.setState({ repeated: false }), 2000);
+      }
     });
   };
 
