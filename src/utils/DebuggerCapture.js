@@ -92,6 +92,12 @@ class DebuggerCapture {
     const { requestId, request } = params;
     const { url, method, headers, postData } = request;
 
+    // Skip OPTIONS preflight requests - they have no POST data
+    if (method === 'OPTIONS') {
+      console.log('[DebuggerCapture] Skipping OPTIONS preflight request:', requestId);
+      return;
+    }
+
     // Check if this is a gRPC request
     const contentType = headers['content-type'] || headers['Content-Type'] || '';
     const isGrpc = contentType.includes('application/grpc') ||
