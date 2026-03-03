@@ -294,6 +294,66 @@ function addToRawCache(requestId, data) {
   }, 5000);
 }
 
+// Decode gRPC response body from base64
+function decodeGrpcResponseBody(responseBodyBase64, method) {
+  try {
+    console.log('[Index] Attempting to decode response body, length:', responseBodyBase64.length);
+
+    // Decode base64 to bytes
+    const binaryString = atob(responseBodyBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    console.log('[Index] Decoded bytes length:', bytes.length);
+
+    // Try to decode with ProtoManager if available
+    if (protoManager.isReady()) {
+      console.log('[Index] ProtoManager ready, attempting to decode response');
+
+      // Parse gRPC-web frame format: [1 byte flags][4 bytes message length][message bytes]
+      if (bytes.length > 5) {
+        const compressionFlag = bytes[0];
+        const messageLength = (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4];
+        const messageBytes = bytes.slice(5, 5 + messageLength);
+
+        console.log('[Index] Compression flag:', compressionFlag);
+        console.log('[Index] Message length:', messageLength);
+        console.log('[Index] Message bytes length:', messageBytes.length);
+
+        // Get message type info
+        const typeInfo = protoManager.getMessageType(method);
+        if (typeInfo && typeInfo.responseType) {
+          console.log('[Index] Response type:', typeInfo.responseType.name);
+
+          // Decode the message using manualDecode
+          const decoded = protoManager.manualDecode(typeInfo.responseType, messageBytes);
+          if (decoded) {
+            console.log('[Index] ✓ Successfully decoded response:', decoded);
+            return decoded;
+          } else {
+            console.warn('[Index] manualDecode returned null');
+          }
+        } else {
+          console.warn('[Index] Could not find responseType for method:', method);
+        }
+      } else {
+        console.warn('[Index] Response too short for gRPC-web frame format:', bytes.length);
+      }
+    } else {
+      console.warn('[Index] ProtoManager not ready, cannot decode response');
+    }
+  } catch (error) {
+    console.error('[Index] Failed to decode responseBodyBase64:', error);
+  }
+
+  return null;
+}
+
+// Export decode function to window for use in repeat functionality
+window.__GRPCWEB_DEVTOOLS_DECODE_RESPONSE__ = decodeGrpcResponseBody;
+
 // Load raw cache from storage on startup
 if (chrome && chrome.storage) {
   loadRawCacheFromStorage()
@@ -435,7 +495,8 @@ function _onMessageRecived({ action, data }) {
     }
 
     // Check if responseBodyBase64 exists and needs decoding
-    if (data.responseBodyBase64 && !data.response && !data.error) {
+    // Decode even if response exists (might be placeholder from repeat)
+    if (data.responseBodyBase64 && !data.error) {
       console.log('[Index] responseBodyBase64 found, attempting to decode...');
       console.log('[Index] Base64 length:', data.responseBodyBase64.length);
 

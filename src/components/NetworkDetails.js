@@ -1387,10 +1387,7 @@ class NetworkDetails extends Component {
         methodType: "unary",
         requestId: requestId,
         request: requestData,
-        response: {
-          __raw_base64__: responseBodyBase64,
-          __note__: 'Response received. Upload proto files to view decoded response.'
-        },
+        responseBodyBase64: responseBodyBase64, // Will be decoded by index.js if proto available
         isRepeat: true,
       }, "*");
     });

@@ -791,6 +791,17 @@ class ProtoManager {
   readField(reader, field, wireType) {
     const type = field.type;
 
+    // Debug: log field info for non-primitive types
+    if (!['string', 'int32', 'sint32', 'uint32', 'int64', 'sint64', 'uint64', 'bool', 'double', 'float', 'bytes'].includes(type)) {
+      console.log('[ProtoManager] Field info:', {
+        name: field.name,
+        type: type,
+        resolvedType: field.resolvedType,
+        resolvedTypeName: field.resolvedType?.constructor?.name,
+        isEnum: field.resolvedType instanceof protobuf.Enum
+      });
+    }
+
     // Primitive types
     if (type === 'string') {
       return reader.string();
@@ -810,7 +821,7 @@ class ProtoManager {
       return reader.float();
     } else if (type === 'bytes') {
       return reader.bytes();
-    } else if (type === 'enum') {
+    } else if (type === 'enum' || field.resolvedType instanceof protobuf.Enum) {
       const enumValue = reader.int32();
       // Try to find enum name
       try {
@@ -819,17 +830,39 @@ class ProtoManager {
           return enumType.valuesById[enumValue] || enumValue;
         }
       } catch (e) {
+        console.warn('[ProtoManager] Failed to resolve enum:', field.type, '- using numeric value:', enumValue);
         // Return numeric value if can't resolve
       }
       return enumValue;
     } else {
+      // Try to determine if this is an enum by attempting lookupEnum
+      // This handles cases where resolvedType is null
+      try {
+        const enumType = this.root.lookupEnum(field.type);
+        if (enumType) {
+          // This is an enum!
+          const enumValue = reader.int32();
+          console.log('[ProtoManager] ✓ Detected enum via lookup:', field.type, 'value:', enumValue);
+          return enumType.valuesById?.[enumValue] || enumValue;
+        }
+      } catch (e) {
+        // Not an enum, continue to message type handling
+      }
+
       // Nested message type
-      const nestedType = this.root.lookupType(field.type);
-      if (nestedType) {
-        const nestedBytes = reader.bytes();
-        return this.manualDecode(nestedType, nestedBytes);
-      } else {
-        console.warn('[ProtoManager] Unknown message type:', field.type);
+      try {
+        const nestedType = this.root.lookupType(field.type);
+        if (nestedType) {
+          const nestedBytes = reader.bytes();
+          return this.manualDecode(nestedType, nestedBytes);
+        } else {
+          console.warn('[ProtoManager] Unknown message type:', field.type);
+          reader.skipType(wireType);
+          return null;
+        }
+      } catch (e) {
+        console.warn('[ProtoManager] Failed to lookup nested type:', field.type, e.message);
+        // Skip the field and return null
         reader.skipType(wireType);
         return null;
       }
