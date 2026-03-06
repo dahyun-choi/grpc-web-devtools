@@ -808,6 +808,37 @@ class ProtoManager {
 
         const fieldName = field.name;
         const camelFieldName = this.snakeToCamelCase(fieldName);
+
+        // Packed repeated field detection:
+        // Proto3 packs repeated varint/enum/bool fields as wireType 2 (length-delimited).
+        // A field is "packed" when wireType=2 but the field's natural wire type is 0 (varint).
+        const VARINT_TYPES = new Set(['int32','sint32','uint32','int64','sint64','uint64','bool','fixed32','sfixed32','fixed64','sfixed64']);
+        const isVarintField = VARINT_TYPES.has(field.type) ||
+          field.resolvedType instanceof protobuf.Enum ||
+          (() => { try { return !!this.root.lookupEnum(field.type); } catch (e) { return false; } })();
+        const isPacked = field.repeated && wireType === 2 && isVarintField;
+
+        if (isPacked) {
+          // Read all packed varint values from the length-delimited bytes
+          if (!result[camelFieldName]) result[camelFieldName] = [];
+          try {
+            const packedBytes = reader.bytes();
+            const packedReader = protobuf.Reader.create(packedBytes);
+            let enumType = null;
+            try { enumType = field.resolvedType instanceof protobuf.Enum
+              ? field.resolvedType
+              : this.root.lookupEnum(field.type); } catch (e) { /* not an enum */ }
+            while (packedReader.pos < packedReader.len) {
+              const raw = packedReader.int32();
+              const resolved = enumType?.valuesById?.[raw] ?? raw;
+              result[camelFieldName].push(resolved);
+            }
+          } catch (e) {
+            console.warn(`[ProtoManager] Failed to read packed field ${fieldName}:`, e.message);
+          }
+          continue;
+        }
+
         let value;
         try {
           value = this.readField(reader, field, wireType);
@@ -957,14 +988,29 @@ class ProtoManager {
 
       // Nested message type
       try {
-        // Use field's parent namespace context for lookup to avoid picking the wrong type
-        // when multiple packages define same-named messages (e.g. Driver, Profile, District)
-        let nestedType;
+        // Find primary nested type using parent namespace context
+        let nestedType = null;
         try {
           nestedType = field.parent.lookupType(field.type);
         } catch (e) {
-          nestedType = this.root.lookupType(field.type);
+          try { nestedType = this.root.lookupType(field.type); } catch (e2) { /* not found */ }
         }
+
+        // For fully-qualified type names (e.g. "commonv1.District"), also resolve
+        // the short name in the parent's package (e.g. "webgwv1.District" when parent
+        // is webgwv1.XXX). Used as fallback when the binary wireType mismatches the
+        // primary schema — handles cases where the server returns a same-named but
+        // structurally different message than what the proto import specifies.
+        let fallbackType = null;
+        const lastDot = field.type.lastIndexOf('.');
+        if (lastDot >= 0) {
+          const shortName = field.type.substring(lastDot + 1);
+          try {
+            const alt = field.parent.lookupType(shortName);
+            if (alt && alt !== nestedType) fallbackType = alt;
+          } catch (e) { /* not found in parent package */ }
+        }
+
         if (nestedType) {
           if (wireType !== 2) {
             console.warn('[ProtoManager] Wire type mismatch for message field:', field.type, 'expected 2, got', wireType);
@@ -972,6 +1018,43 @@ class ProtoManager {
             return null;
           }
           const nestedBytes = reader.bytes();
+
+          // Peek at the first tag in nestedBytes to detect schema mismatch.
+          // If the primary type's expected wireType doesn't match the binary's,
+          // but the fallback type does, switch to the fallback.
+          if (fallbackType && nestedBytes.length > 0) {
+            try {
+              const peekedReader = protobuf.Reader.create(nestedBytes);
+              const firstTag = peekedReader.uint32();
+              const firstFieldNum = firstTag >>> 3;
+              const firstWireType = firstTag & 7;
+
+              const primaryField = nestedType.fieldsById?.[firstFieldNum];
+              const fallbackField = fallbackType.fieldsById?.[firstFieldNum];
+
+              if (primaryField && fallbackField) {
+                const pft = primaryField.type;
+                const isStr = pft === 'string' || pft === 'bytes';
+                const isEnum = primaryField.resolvedType instanceof protobuf.Enum
+                  || (() => { try { return !!this.root.lookupEnum(pft); } catch (e) { return false; } })();
+                const isVarint = isEnum || ['int32','uint32','sint32','int64','uint64','sint64','bool'].includes(pft);
+                const isMsg = !isStr && !isVarint && primaryField.resolvedType instanceof protobuf.Type;
+                const expectedPrimaryWt = isStr || isMsg ? 2 : 0;
+
+                if (firstWireType !== expectedPrimaryWt) {
+                  const fft = fallbackField.type;
+                  const fallbackIsStr = fft === 'string' || fft === 'bytes';
+                  const fallbackIsMsg = !fallbackIsStr && fallbackField.resolvedType instanceof protobuf.Type;
+                  const expectedFallbackWt = fallbackIsStr || fallbackIsMsg ? 2 : 0;
+                  if (firstWireType === expectedFallbackWt) {
+                    console.log('[ProtoManager] Binary wireType mismatch: switching from', nestedType.name, 'to fallback', fallbackType.name);
+                    nestedType = fallbackType;
+                  }
+                }
+              }
+            } catch (e) { /* ignore peek errors */ }
+          }
+
           return this.manualDecode(nestedType, nestedBytes);
         } else {
           console.warn('[ProtoManager] Unknown message type:', field.type);
