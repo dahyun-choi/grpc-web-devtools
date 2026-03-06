@@ -107,7 +107,7 @@ Replay any captured gRPC request with a single click using the **Repeat** button
 
 - Uses the `chrome.debugger` API to reliably capture the original raw request body
 - The replayed response is decoded with proto files if available
-- Repeat requests are visually distinguished with a **↩ icon** and **yellow background** in the request list
+- Repeat requests are visually distinguished with a **↩ icon** (gold) and **yellow background** in the request list
 - If no proto files are uploaded, clicking Repeat opens the Settings panel automatically
 
 ### Edit & Repeat
@@ -115,10 +115,21 @@ Replay any captured gRPC request with a single click using the **Repeat** button
 Modify request parameters and resend with the **Edit & Repeat** button.
 
 - Edit request body as JSON directly in the panel
-- Changes are highlighted before sending
+- Edit mode is clearly indicated with a blue header, **✏ Editing** badge, and left border accent
+- **Send** and **Cancel** buttons appear in edit mode; Copy and Collapse buttons remain visible at all times
 - Edited requests are re-encoded to protobuf binary using the uploaded `.proto` schema
 - If no changes are made, the original raw request body is used as-is
 - Response is decoded and displayed alongside the gRPC status code
+- After sending, **Sent!!!** feedback appears on the Edit & Repeat button
+- If no proto files are uploaded, clicking Edit & Repeat opens the Settings panel automatically
+
+### Split Panel Toggle
+
+A **Split panel** checkbox in the toolbar controls the detail view layout.
+
+- **Checked (default)** — request and response are shown in separate resizable panels
+- **Unchecked** — request and response are merged into a single JSON viewer (`{ request: {...}, response: {...} }`) for a compact view
+- All action buttons (Edit & Repeat, Repeat, Copy, Collapse) are available in both modes
 
 ### Request/Response Headers
 
@@ -139,4 +150,4 @@ Use the **Global search** field in the toolbar to filter the request list by sea
 
 - **OPTIONS preflight filtering** — preflight requests are hidden from the request list
 - **Status code display** — gRPC status codes are shown in the request list for quick error identification
-- **Expand/Collapse persistence** — the JSON viewer expand/collapse state is preserved correctly when switching between entries
+- **Expand/Collapse in edit mode** — Collapse/Expand button works correctly even after manually interacting with JSON nodes in edit mode
