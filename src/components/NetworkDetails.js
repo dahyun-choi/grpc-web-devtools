@@ -556,6 +556,7 @@ class NetworkDetails extends Component {
 
     return (
       <ReactJson
+        key={`request-${this.props.entry?.entryId}-${collapsed}-${editMode}`}
         name={false}
         theme={theme}
         style={{ backgroundColor: "transparent" }}
@@ -611,6 +612,7 @@ class NetworkDetails extends Component {
       const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
       return (
         <ReactJson
+          key={`response-error-${this.props.entry?.entryId}-${collapsed}`}
           name={false}
           theme={theme}
           style={{ backgroundColor: "transparent" }}
@@ -631,6 +633,7 @@ class NetworkDetails extends Component {
 
     return (
       <ReactJson
+        key={`response-${this.props.entry?.entryId}-${collapsed}`}
         name={false}
         theme={theme}
         style={{ backgroundColor: "transparent" }}
