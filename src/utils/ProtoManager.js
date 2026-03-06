@@ -679,7 +679,9 @@ class ProtoManager {
     // Iterate through all fields in the message type
     Object.keys(messageType.fields || {}).forEach(fieldName => {
       const field = messageType.fields[fieldName];
-      const value = jsonData[fieldName];
+      // Proto field names are snake_case; JSON data may be camelCase — try both
+      const camelFieldName = this.snakeToCamelCase(fieldName);
+      const value = jsonData[fieldName] !== undefined ? jsonData[fieldName] : jsonData[camelFieldName];
 
       // Skip if value is not provided
       if (value === undefined || value === null) {
@@ -733,7 +735,8 @@ class ProtoManager {
       writer.uint32((fieldNumber << 3) | 5).float(value);
     } else if (type === 'bytes') {
       writer.uint32((fieldNumber << 3) | 2).bytes(value);
-    } else if (type === 'enum') {
+    } else if (type === 'enum' || field.resolvedType instanceof protobuf.Enum
+        || (() => { try { return !!this.root.lookupEnum(type); } catch (e) { return false; } })()) {
       // Enum values are encoded as varints
       const enumValue = typeof value === 'string' ? this.getEnumValue(field, value) : value;
       writer.uint32((fieldNumber << 3) | 0).int32(enumValue);
