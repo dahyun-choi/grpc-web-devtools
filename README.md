@@ -89,3 +89,54 @@ const transport: Transport = ConnectTransportOptions({
   interceptors,
 });
 ```
+
+## Added Features
+
+### Proto File Upload & Binary Decoding
+
+Upload your `.proto` files in **Settings** to automatically decode protobuf binary messages into readable JSON. Without proto files, raw base64-encoded binary is displayed as-is.
+
+- Supports multiple `.proto` files with cross-package imports
+- Namespace-aware type resolution — correctly handles same-named messages across different packages (e.g. `commonv1.District` vs `webgwv1.District`)
+- Auto-detects binary format mismatch for nested messages and falls back to the same-named type in the parent package
+- Packed repeated enum/varint fields are decoded correctly
+
+### Repeat Request
+
+Replay any captured gRPC request with a single click using the **Repeat** button in the request detail panel.
+
+- Uses the `chrome.debugger` API to reliably capture the original raw request body
+- The replayed response is decoded with proto files if available
+- Repeat requests are visually distinguished with a **↩ icon** and **yellow background** in the request list
+- If no proto files are uploaded, clicking Repeat opens the Settings panel automatically
+
+### Edit & Repeat
+
+Modify request parameters and resend with the **Edit & Repeat** button.
+
+- Edit request body as JSON directly in the panel
+- Changes are highlighted before sending
+- Edited requests are re-encoded to protobuf binary using the uploaded `.proto` schema
+- If no changes are made, the original raw request body is used as-is
+- Response is decoded and displayed alongside the gRPC status code
+
+### Request/Response Headers
+
+A **Headers** tab is available in the request detail panel showing:
+
+- Request headers (method, content-type, authorization, etc.)
+- Response headers and HTTP status
+
+### Duration Column
+
+The gRPC request list includes a **duration column** showing the elapsed time from request sent to response received (e.g. `123 ms`, `1.2 s`).
+
+### Global Search
+
+Use the **Global search** field in the toolbar to filter the request list by searching across all request bodies, response bodies, methods, and error messages.
+
+### Other Improvements
+
+- **OPTIONS preflight filtering** — preflight requests are hidden from the request list
+- **Status code display** — gRPC status codes are shown in the request list for quick error identification
+- **Expand/Collapse persistence** — the JSON viewer expand/collapse state is preserved correctly when switching between entries
