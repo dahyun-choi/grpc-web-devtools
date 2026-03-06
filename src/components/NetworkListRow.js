@@ -16,6 +16,12 @@ class NetworkListRow extends PureComponent {
     return `${hours}:${minutes}:${seconds}.${ms}`;
   }
 
+  formatDuration(ms) {
+    if (ms == null) return '';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+
   formatStatusCode(code) {
     if (code == null) return '';
 
@@ -48,6 +54,7 @@ class NetworkListRow extends PureComponent {
           {log.isRepeat && <span className="repeat-icon">↩</span>}
         </span>
         <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`}>{this.formatStatusCode(log.statusCode)}</span>
+        <span className="duration-cell">{this.formatDuration(log.duration)}</span>
       </div >
     );
   }

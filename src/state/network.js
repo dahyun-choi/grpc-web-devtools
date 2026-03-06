@@ -86,6 +86,13 @@ const networkSlice = createSlice({
       const { payload } = action;
       state.log = payload;
     },
+    setEntryDuration(state, action) {
+      const { entryId, duration } = action.payload;
+      const entry = state.log.find(e => e.entryId === entryId);
+      if (entry) entry.duration = duration;
+      const bakEntry = state._logBak.find(e => e.entryId === entryId);
+      if (bakEntry) bakEntry.duration = duration;
+    },
   },
   extraReducers: {
     [setFilterValue]: (state, action) => {
@@ -128,7 +135,7 @@ const networkSlice = createSlice({
 });
 
 const { actions, reducer } = networkSlice;
-export const { networkLog, selectLogEntry, clearLog, setPreserveLog } = actions;
+export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration } = actions;
 
 function buildSummaryEntry(entry) {
   // Extract status code from error

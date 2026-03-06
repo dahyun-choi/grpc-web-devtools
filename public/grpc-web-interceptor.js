@@ -225,6 +225,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
 
       var posted = false;
       var requestId = __grpcWebDevtoolsRequestId++;
+      var sentAt = Date.now();
 
       // Capture pending raw request and associate with requestId
       setTimeout(() => {
@@ -285,6 +286,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             request: request.toObject(),
             response: err ? undefined : response.toObject(),
             error: err || undefined,
+            duration: Date.now() - sentAt,
           }, "*")
           posted = true;
         }
@@ -391,6 +393,8 @@ setInterval(function() {
 
       console.log('[Page] gRPC method:', grpcMethod, 'Body length:', bodyData.length);
 
+      var repeatSentAt = Date.now();
+
       // Send initial request notification
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
@@ -419,7 +423,8 @@ setInterval(function() {
               methodType: "unary",
               requestId: repeatRequestId,
               request: request,
-              response: response
+              response: response,
+              duration: Date.now() - repeatSentAt,
             }, "*");
 
             console.log('[Page] Response received:', buffer.byteLength, 'bytes');

@@ -6,7 +6,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
-import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
+import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration } from './state/network';
 import toolbarReducer from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
@@ -595,6 +595,8 @@ function _onMessageRecived({ action, data }) {
     console.log('[Index] Created entry with entryId:', fullEntry.entryId);
     console.log('[Index] Entry has response:', !!fullEntry.response);
     console.log('[Index] Entry has error:', !!fullEntry.error);
+    console.log('[Index] data.duration:', data.duration);
+    console.log('[Index] fullEntry.duration:', fullEntry.duration);
 
     // Link entryId with most recent unlinked raw request
     // This handles the case where same URL has multiple simultaneous requests
@@ -604,6 +606,15 @@ function _onMessageRecived({ action, data }) {
         // Store raw request with entryId as key for direct lookup
         rawRequestsCache.set(fullEntry.entryId, matchingRawRequest);
         console.log('[Index] ✓ Linked entryId', fullEntry.entryId, 'with raw request');
+
+        // Calculate duration from raw request timestamp if not already set
+        if (fullEntry.duration == null && matchingRawRequest.timestamp) {
+          const duration = fullEntry.timestamp - matchingRawRequest.timestamp;
+          if (duration > 0) {
+            store.dispatch(setEntryDuration({ entryId: fullEntry.entryId, duration }));
+            console.log('[Index] ✓ Duration calculated:', duration, 'ms');
+          }
+        }
       } else {
         console.log('[Index] ⚠ No matching raw request found for entryId:', fullEntry.entryId);
       }

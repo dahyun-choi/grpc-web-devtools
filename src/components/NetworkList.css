@@ -182,3 +182,23 @@
 .data-grid .data-row.selected .code-cell {
   color: var(--selection-fg-color);
 }
+
+.duration-column {
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+  text-align: right;
+}
+
+.duration-cell {
+  display: inline-block;
+  width: 55px;
+  min-width: 55px;
+  max-width: 55px;
+  font-family: monospace;
+  font-size: 11px;
+  text-align: right;
+  color: var(--toolbar-color);
+  opacity: 0.8;
+  padding-right: 4px;
+}

@@ -28,6 +28,9 @@ class NetworkList extends Component {
                     <th className="code-column">
                       <div>Code</div>
                     </th>
+                    <th className="duration-column">
+                      <div>Time</div>
+                    </th>
                   </tr>
                 </tbody>
               </table>

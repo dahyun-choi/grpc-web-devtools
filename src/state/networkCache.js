@@ -61,18 +61,18 @@ export function addNetworkEntry(entry) {
       existingEntry.response = entry.response;
       if (!existingEntry.endTime) {
         existingEntry.endTime = Date.now();
-        if (existingEntry.startTime) {
-          existingEntry.duration = existingEntry.endTime - existingEntry.startTime;
-        }
+        existingEntry.duration = entry.duration != null
+          ? entry.duration
+          : (existingEntry.startTime ? existingEntry.endTime - existingEntry.startTime : null);
       }
     }
     if (entry.error != null) {
       existingEntry.error = entry.error;
       if (!existingEntry.endTime) {
         existingEntry.endTime = Date.now();
-        if (existingEntry.startTime) {
-          existingEntry.duration = existingEntry.endTime - existingEntry.startTime;
-        }
+        existingEntry.duration = entry.duration != null
+          ? entry.duration
+          : (existingEntry.startTime ? existingEntry.endTime - existingEntry.startTime : null);
       }
     }
     if (entry.requestId != null) existingEntry.requestId = entry.requestId;
@@ -82,13 +82,14 @@ export function addNetworkEntry(entry) {
 
   const entryId = nextEntryId++;
   const now = Date.now();
+  const hasResponse = entry.response != null || entry.error != null;
   const fullEntry = {
     ...entry,
     entryId,
     timestamp: now,
     startTime: entry.request != null ? now : null,
-    endTime: (entry.response != null || entry.error != null) ? now : null,
-    duration: null,
+    endTime: hasResponse ? now : null,
+    duration: entry.duration != null ? entry.duration : null,
     payloadBytes: estimatePayloadBytes(entry),
   };
   cache.set(entryId, fullEntry);
