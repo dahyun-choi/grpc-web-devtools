@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
@@ -11,13 +11,8 @@ import Settings from './Settings';
 import './Toolbar.css';
 
 class Toolbar extends Component {
-  state = {
-    settingsOpen: false,
-  };
-
   _renderButtons() {
-    const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
-    const { settingsOpen } = this.state;
+    const { clearLog, toggleFilter, setSettingsOpen, toolbar: { filterIsEnabled, filterIsOpen, settingsOpen }} = this.props;
     return (
         <>
           <ToolbarButton title="Clear" onClick={() => clearLog({ force: true })} >
@@ -32,7 +27,7 @@ class Toolbar extends Component {
            </ToolbarButton>
           <ToolbarButton
             title="Settings"
-            onClick={() => this.setState({ settingsOpen: !settingsOpen })}
+            onClick={() => setSettingsOpen(!settingsOpen)}
             className={settingsOpen ? "open" : ""}
            >
              <SettingsIcon />
@@ -62,8 +57,8 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { preserveLog, toolbar } = this.props;
-    const { settingsOpen } = this.state;
+    const { preserveLog, toolbar, setSettingsOpen } = this.props;
+    const { settingsOpen } = toolbar;
     return (
       <>
         <div className="toolbar">
@@ -93,11 +88,11 @@ class Toolbar extends Component {
         </div>
         {this._renderFilterToolbar()}
         {settingsOpen && (
-          <div className="settings-modal-overlay" onClick={() => this.setState({ settingsOpen: false })}>
+          <div className="settings-modal-overlay" onClick={() => setSettingsOpen(false)}>
             <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
               <div className="settings-modal-header">
                 <h2>Settings</h2>
-                <button className="settings-modal-close" onClick={() => this.setState({ settingsOpen: false })}>×</button>
+                <button className="settings-modal-close" onClick={() => setSettingsOpen(false)}>×</button>
               </div>
               <div className="settings-modal-content">
                 <Settings />
@@ -153,6 +148,7 @@ const mapDispatchToProps = {
   clearLog: clearLogAndCache,
   toggleFilter,
   setFilterValue,
+  setSettingsOpen,
   applyGlobalSearch
 };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

@@ -6,6 +6,7 @@ import React, { Component } from "react";
 import ReactJson from "react-json-view";
 import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
+import { setSettingsOpen } from "../state/toolbar";
 import MinusIcon from "../icons/Minus";
 import PlusIcon from "../icons/Plus";
 import CopyIcon from "../icons/Copy";
@@ -690,8 +691,12 @@ class NetworkDetails extends Component {
   };
 
   _startEdit = () => {
-    const { entry } = this.props;
+    const { entry, openSettings } = this.props;
     if (!entry) return;
+    if (!protoManager.isReady()) {
+      openSettings();
+      return;
+    }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
@@ -1141,9 +1146,13 @@ class NetworkDetails extends Component {
 
   _repeatRequest = () => {
     console.log('[Panel] ========== REPEAT REQUEST ==========');
-    const { entry } = this.props;
+    const { entry, openSettings } = this.props;
     if (!entry) {
       console.warn('[Panel] No entry');
+      return;
+    }
+    if (!protoManager.isReady()) {
+      openSettings();
       return;
     }
 
@@ -1687,4 +1696,7 @@ const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   globalSearchValue: state.toolbar.globalSearchValue
 });
-export default connect(mapStateToProps)(NetworkDetails);
+const mapDispatchToProps = {
+  openSettings: () => setSettingsOpen(true),
+};
+export default connect(mapStateToProps, mapDispatchToProps)(NetworkDetails);
