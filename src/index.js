@@ -294,6 +294,44 @@ function addToRawCache(requestId, data) {
   }, 5000);
 }
 
+// Parse gRPC-web binary frame format
+// Each frame: [1 byte flag][4 bytes length big-endian][payload]
+// flag 0x00 = data message, 0x80 = trailer
+function parseGrpcWebFrames(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const dataFrames = [];
+  let trailerFrame = null;
+  let offset = 0;
+
+  while (offset + 5 <= bytes.length) {
+    const flag = view.getUint8(offset);
+    const length = view.getUint32(offset + 1, false); // big-endian
+    const payload = bytes.slice(offset + 5, offset + 5 + length);
+    offset += 5 + length;
+
+    if (flag === 0x80) {
+      trailerFrame = payload;
+    } else {
+      dataFrames.push({ flag, bytes: payload });
+    }
+  }
+
+  return { dataFrames, trailerFrame };
+}
+
+// Parse gRPC trailer payload (HTTP/2 header format: "key: value\r\n...")
+function parseGrpcTrailer(payload) {
+  const text = new TextDecoder().decode(payload);
+  const result = {};
+  for (const line of text.split('\r\n')) {
+    const idx = line.indexOf(':');
+    if (idx > 0) {
+      result[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+    }
+  }
+  return result;
+}
+
 // Decode gRPC response body from base64
 function decodeGrpcResponseBody(responseBodyBase64, method) {
   try {
@@ -308,42 +346,33 @@ function decodeGrpcResponseBody(responseBodyBase64, method) {
 
     console.log('[Index] Decoded bytes length:', bytes.length);
 
-    // Try to decode with ProtoManager if available
-    if (protoManager.isReady()) {
-      console.log('[Index] ProtoManager ready, attempting to decode response');
-
-      // Parse gRPC-web frame format: [1 byte flags][4 bytes message length][message bytes]
-      if (bytes.length > 5) {
-        const compressionFlag = bytes[0];
-        const messageLength = (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4];
-        const messageBytes = bytes.slice(5, 5 + messageLength);
-
-        console.log('[Index] Compression flag:', compressionFlag);
-        console.log('[Index] Message length:', messageLength);
-        console.log('[Index] Message bytes length:', messageBytes.length);
-
-        // Get message type info
-        const typeInfo = protoManager.getMessageType(method);
-        if (typeInfo && typeInfo.responseType) {
-          console.log('[Index] Response type:', typeInfo.responseType.name);
-
-          // Decode the message using manualDecode
-          const decoded = protoManager.manualDecode(typeInfo.responseType, messageBytes);
-          if (decoded) {
-            console.log('[Index] ✓ Successfully decoded response:', decoded);
-            return decoded;
-          } else {
-            console.warn('[Index] manualDecode returned null');
-          }
-        } else {
-          console.warn('[Index] Could not find responseType for method:', method);
-        }
-      } else {
-        console.warn('[Index] Response too short for gRPC-web frame format:', bytes.length);
-      }
-    } else {
+    if (!protoManager.isReady()) {
       console.warn('[Index] ProtoManager not ready, cannot decode response');
+      return null;
     }
+
+    console.log('[Index] ProtoManager ready, attempting to decode response');
+
+    const { dataFrames } = parseGrpcWebFrames(bytes);
+    console.log('[Index] Parsed data frames:', dataFrames.length);
+
+    const typeInfo = protoManager.getMessageType(method);
+    if (!typeInfo || !typeInfo.responseType) {
+      console.warn('[Index] Could not find responseType for method:', method);
+      return null;
+    }
+
+    console.log('[Index] Response type:', typeInfo.responseType.name);
+
+    for (const frame of dataFrames) {
+      const decoded = protoManager.manualDecode(typeInfo.responseType, frame.bytes);
+      if (decoded) {
+        console.log('[Index] ✓ Successfully decoded response:', decoded);
+        return decoded;
+      }
+    }
+
+    console.warn('[Index] manualDecode returned null for all data frames');
   } catch (error) {
     console.error('[Index] Failed to decode responseBodyBase64:', error);
   }
@@ -495,7 +524,6 @@ function _onMessageRecived({ action, data }) {
     }
 
     // Check if responseBodyBase64 exists and needs decoding
-    // Decode even if response exists (might be placeholder from repeat)
     if (data.responseBodyBase64 && !data.error) {
       console.log('[Index] responseBodyBase64 found, attempting to decode...');
       console.log('[Index] Base64 length:', data.responseBodyBase64.length);
@@ -511,42 +539,44 @@ function _onMessageRecived({ action, data }) {
         console.log('[Index] Decoded bytes length:', bytes.length);
         console.log('[Index] First 20 bytes (hex):', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
-        // Try to decode with ProtoManager if available
-        if (protoManager.isReady()) {
-          console.log('[Index] ProtoManager ready, attempting to decode response');
+        // Parse all gRPC-web frames
+        const frames = parseGrpcWebFrames(bytes);
+        console.log('[Index] Parsed frames: data=%d, trailer=%s', frames.dataFrames.length, frames.trailerFrame != null);
 
-          // Parse gRPC-web frame format: [1 byte flags][4 bytes message length][message bytes]
-          if (bytes.length > 5) {
-            const compressionFlag = bytes[0];
-            const messageLength = (bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4];
-            const messageBytes = bytes.slice(5, 5 + messageLength);
+        // 1. Trailer frame → grpc-status / grpc-message
+        if (frames.trailerFrame !== null) {
+          const trailer = parseGrpcTrailer(frames.trailerFrame);
+          const grpcStatus = parseInt(trailer['grpc-status'] ?? '0', 10);
+          const grpcMessage = decodeURIComponent(trailer['grpc-message'] || '');
+          console.log('[Index] gRPC trailer status:', grpcStatus, 'message:', grpcMessage);
 
-            console.log('[Index] Compression flag:', compressionFlag);
-            console.log('[Index] Message length:', messageLength);
-            console.log('[Index] Message bytes length:', messageBytes.length);
+          if (grpcStatus !== 0) {
+            data.error = { code: grpcStatus, message: grpcMessage || `gRPC error (code ${grpcStatus})` };
+            console.warn('[Index] gRPC error from trailer:', data.error);
+          }
+        }
 
-            // Get message type info
-            const typeInfo = protoManager.getMessageType(data.method);
-            if (typeInfo && typeInfo.responseType) {
-              console.log('[Index] Response type:', typeInfo.responseType.name);
-
-              // Decode the message using manualDecode
-              const decoded = protoManager.manualDecode(typeInfo.responseType, messageBytes);
+        // 2. Data frames → protobuf decode (skip on gRPC error)
+        if (!data.error && frames.dataFrames.length > 0 && protoManager.isReady()) {
+          const typeInfo = protoManager.getMessageType(data.method);
+          if (typeInfo && typeInfo.responseType) {
+            console.log('[Index] Response type:', typeInfo.responseType.name);
+            for (const frame of frames.dataFrames) {
+              const decoded = protoManager.manualDecode(typeInfo.responseType, frame.bytes);
               if (decoded) {
                 data.response = decoded;
                 console.log('[Index] ✓ Successfully decoded response:', decoded);
-              } else {
-                console.warn('[Index] manualDecode returned null');
+                break; // unary: first data frame is the response
               }
-            } else {
-              console.warn('[Index] Could not find responseType for method:', data.method);
+            }
+            if (!data.response) {
+              console.warn('[Index] manualDecode returned null for all data frames');
             }
           } else {
-            console.warn('[Index] Response too short for gRPC-web frame format:', bytes.length);
+            console.warn('[Index] Could not find responseType for method:', data.method);
           }
-        } else {
-          console.warn('[Index] ProtoManager not ready, cannot decode response');
-          console.warn('[Index] Upload proto files in Settings to see decoded responses');
+        } else if (!protoManager.isReady()) {
+          console.warn('[Index] ProtoManager not ready — upload proto files in Settings');
         }
       } catch (error) {
         console.error('[Index] Failed to decode responseBodyBase64:', error);

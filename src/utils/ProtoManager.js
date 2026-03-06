@@ -446,6 +446,15 @@ class ProtoManager {
       }
     };
 
+    // Pre-load google.protobuf well-known types so lookupType works correctly
+    for (const definition of Object.values(googleProtoDefinitions)) {
+      try {
+        protobuf.parse(definition, this.root, { keepCase: true });
+      } catch (e) {
+        // Ignore - might already be loaded or have minor conflicts
+      }
+    }
+
     // Load proto files one by one with better error handling
     const filePaths = Array.from(this.protoFiles.keys());
 
@@ -493,8 +502,16 @@ class ProtoManager {
     }
 
     console.log('[ProtoManager] Successfully built root with', successCount, 'files');
-    console.log('[ProtoManager] Root namespaces:', Object.keys(this.root.nested || {}));
+    // Log top-level nested keys so we can detect any type accidentally registered at root
+    const rootKeys = Object.keys(this.root.nested || {});
+    console.log('[ProtoManager] Root namespaces:', rootKeys);
+    // Warn if a bare message name (not a package namespace) ends up at the root level
+    const suspectRootKeys = rootKeys.filter(k => /^[A-Z]/.test(k));
+    if (suspectRootKeys.length) {
+      console.warn('[ProtoManager] Unexpected top-level message types in root (should all be package namespaces):', suspectRootKeys);
+    }
     console.log('[ProtoManager] Google protobuf imports used:', Array.from(googleProtoImports));
+
   }
 
   async saveToStorage() {
@@ -603,9 +620,17 @@ class ProtoManager {
       console.log('[ProtoManager] Request type:', method.requestType);
       console.log('[ProtoManager] Response type:', method.responseType);
 
-      // Look up request message type
-      const requestType = this.root.lookupType(method.requestType);
-      const responseType = this.root.lookupType(method.responseType);
+      // Look up request/response message types using service namespace context
+      // to avoid picking the wrong type when multiple packages share the same short name
+      const lookupFromService = (typeName) => {
+        try {
+          return service.lookupType(typeName);
+        } catch (e) {
+          return this.root.lookupType(typeName);
+        }
+      };
+      const requestType = lookupFromService(method.requestType);
+      const responseType = lookupFromService(method.responseType);
 
       return {
         requestType,
@@ -737,9 +762,13 @@ class ProtoManager {
     return 0;
   }
 
+  snakeToCamelCase(str) {
+    return str.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+  }
+
   // Manual decode - decode protobuf bytes to JSON without using eval()
   manualDecode(messageType, bytes) {
-    console.log('[ProtoManager] Manual decoding for type:', messageType.name);
+    console.log('[ProtoManager] Manual decoding for type:', messageType.name, '| fullName:', messageType.fullName);
 
     try {
       // Use Reader to decode
@@ -747,36 +776,61 @@ class ProtoManager {
       const result = {};
 
       while (reader.pos < reader.len) {
-        const tag = reader.uint32();
-        const fieldNumber = tag >>> 3;
-        const wireType = tag & 7;
+        // Wrap each field in try-catch so one bad field doesn't abort the whole message
+        let tag, fieldNumber, wireType;
+        try {
+          tag = reader.uint32();
+        } catch (e) {
+          console.error('[ProtoManager] Failed to read tag in', messageType.name, ':', e.message);
+          break;
+        }
+        fieldNumber = tag >>> 3;
+        wireType = tag & 7;
 
-        // Find field by number
-        let field = null;
-        for (const fieldName in messageType.fields) {
-          if (messageType.fields[fieldName].id === fieldNumber) {
-            field = messageType.fields[fieldName];
-            break;
+        // Find field by number - use fieldsById for O(1) lookup
+        let field = messageType.fieldsById ? messageType.fieldsById[fieldNumber] : null;
+
+        // Fallback: manual iteration (handles edge cases)
+        if (!field) {
+          for (const fn in messageType.fields) {
+            if (messageType.fields[fn].id === fieldNumber) {
+              field = messageType.fields[fn];
+              break;
+            }
           }
         }
 
         if (!field) {
-          console.warn('[ProtoManager] Unknown field number:', fieldNumber);
-          reader.skipType(wireType);
+          console.warn(`[ProtoManager] Unknown field number: ${fieldNumber} in ${messageType.name}`);
+          try { reader.skipType(wireType); } catch (e) { break; }
           continue;
         }
 
         const fieldName = field.name;
-        const value = this.readField(reader, field, wireType);
+        const camelFieldName = this.snakeToCamelCase(fieldName);
+        let value;
+        try {
+          value = this.readField(reader, field, wireType);
+        } catch (e) {
+          // For length-delimited fields (wire type 2), reader.bytes() already advanced the
+          // outer reader before any internal error, so continue is safe.
+          // For other wire types, the reader state may be unknown — log and stop.
+          console.error(`[ProtoManager] Failed to read field ${fieldName} in ${messageType.name}:`, e.message);
+          if (wireType === 2) continue;
+          break;
+        }
 
-        // Handle repeated fields
-        if (field.repeated) {
-          if (!result[fieldName]) {
-            result[fieldName] = [];
+        // Handle map, repeated, and single fields
+        if (field.map) {
+          if (!result[camelFieldName]) result[camelFieldName] = {};
+          if (value && value.__isMapEntry && value.key !== null) {
+            result[camelFieldName][value.key] = value.value;
           }
-          result[fieldName].push(value);
+        } else if (field.repeated) {
+          if (!result[camelFieldName]) result[camelFieldName] = [];
+          result[camelFieldName].push(value);
         } else {
-          result[fieldName] = value;
+          result[camelFieldName] = value;
         }
       }
 
@@ -792,58 +846,110 @@ class ProtoManager {
     const type = field.type;
 
     // Debug: log field info for non-primitive types
-    if (!['string', 'int32', 'sint32', 'uint32', 'int64', 'sint64', 'uint64', 'bool', 'double', 'float', 'bytes'].includes(type)) {
+    if (!['string', 'int32', 'sint32', 'uint32', 'int64', 'sint64', 'uint64', 'bool', 'double', 'float', 'bytes', 'fixed32', 'sfixed32', 'fixed64', 'sfixed64'].includes(type)) {
       console.log('[ProtoManager] Field info:', {
         name: field.name,
         type: type,
+        wireType: wireType,
         resolvedType: field.resolvedType,
         resolvedTypeName: field.resolvedType?.constructor?.name,
         isEnum: field.resolvedType instanceof protobuf.Enum
       });
     }
 
-    // Primitive types
+    // Handle map fields: map<K, V> is encoded as repeated length-delimited messages
+    // with field 1 = key, field 2 = value
+    if (field.map) {
+      if (wireType !== 2) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      // reader.bytes() advances the outer reader past this map entry — must be called first
+      const mapEntryBytes = reader.bytes();
+      const mapReader = protobuf.Reader.create(mapEntryBytes);
+      let mapKey = null;
+      let mapValue = null;
+      while (mapReader.pos < mapReader.len) {
+        let mapTag;
+        try { mapTag = mapReader.uint32(); } catch (e) { break; }
+        const mapFieldNum = mapTag >>> 3;
+        const mapWireType = mapTag & 7;
+        try {
+          if (mapFieldNum === 1) {
+            const keyField = { type: field.keyType, map: false, repeated: false, resolvedType: null, name: '__mapKey__', id: 1 };
+            mapKey = this.readField(mapReader, keyField, mapWireType);
+          } else if (mapFieldNum === 2) {
+            const valField = { type: field.type, map: false, repeated: false, resolvedType: field.resolvedType, name: '__mapValue__', id: 2 };
+            mapValue = this.readField(mapReader, valField, mapWireType);
+          } else {
+            try { mapReader.skipType(mapWireType); } catch (e) { break; }
+          }
+        } catch (e) {
+          console.warn('[ProtoManager] Map entry field error:', e.message);
+          break;
+        }
+      }
+      return { __isMapEntry: true, key: mapKey, value: mapValue };
+    }
+
+    // Wire type constants: 0=varint, 1=64-bit, 2=length-delimited, 5=32-bit
+    // Validate wire type before reading to prevent reader corruption on type mismatches.
+    // If wire type doesn't match the field's expected encoding, skip and return null.
+
     if (type === 'string') {
+      if (wireType !== 2) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.string();
+    } else if (type === 'bytes') {
+      if (wireType !== 2) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      return reader.bytes();
     } else if (type === 'int32' || type === 'sint32') {
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.int32();
     } else if (type === 'uint32') {
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.uint32();
     } else if (type === 'int64' || type === 'sint64') {
-      return reader.int64().toString();
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      const longVal = reader.int64();
+      const num = typeof longVal === 'object' && typeof longVal.toNumber === 'function'
+        ? longVal.toNumber() : Number(String(longVal));
+      return Number.isSafeInteger(num) ? num : String(longVal);
     } else if (type === 'uint64') {
-      return reader.uint64().toString();
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      const longVal = reader.uint64();
+      const num = typeof longVal === 'object' && typeof longVal.toNumber === 'function'
+        ? longVal.toNumber() : Number(String(longVal));
+      return Number.isSafeInteger(num) ? num : String(longVal);
     } else if (type === 'bool') {
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.bool();
     } else if (type === 'double') {
+      if (wireType !== 1) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.double();
     } else if (type === 'float') {
+      if (wireType !== 5) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       return reader.float();
-    } else if (type === 'bytes') {
-      return reader.bytes();
+    } else if (type === 'fixed64' || type === 'sfixed64') {
+      if (wireType !== 1) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      return type === 'fixed64' ? reader.fixed64().toString() : reader.sfixed64().toString();
+    } else if (type === 'fixed32' || type === 'sfixed32') {
+      if (wireType !== 5) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
+      return type === 'fixed32' ? reader.fixed32() : reader.sfixed32();
     } else if (type === 'enum' || field.resolvedType instanceof protobuf.Enum) {
+      if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
       const enumValue = reader.int32();
-      // Try to find enum name
       try {
         const enumType = this.root.lookupEnum(field.type);
         if (enumType && enumType.valuesById) {
-          return enumType.valuesById[enumValue] || enumValue;
+          return enumType.valuesById[enumValue] ?? enumValue;
         }
-      } catch (e) {
-        console.warn('[ProtoManager] Failed to resolve enum:', field.type, '- using numeric value:', enumValue);
-        // Return numeric value if can't resolve
-      }
+      } catch (e) { /* ignore */ }
       return enumValue;
     } else {
-      // Try to determine if this is an enum by attempting lookupEnum
-      // This handles cases where resolvedType is null
+      // Try enum lookup first (handles cases where resolvedType is null)
       try {
         const enumType = this.root.lookupEnum(field.type);
         if (enumType) {
-          // This is an enum!
+          if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
           const enumValue = reader.int32();
-          console.log('[ProtoManager] ✓ Detected enum via lookup:', field.type, 'value:', enumValue);
-          return enumType.valuesById?.[enumValue] || enumValue;
+          return enumType.valuesById?.[enumValue] ?? enumValue;
         }
       } catch (e) {
         // Not an enum, continue to message type handling
@@ -851,19 +957,30 @@ class ProtoManager {
 
       // Nested message type
       try {
-        const nestedType = this.root.lookupType(field.type);
+        // Use field's parent namespace context for lookup to avoid picking the wrong type
+        // when multiple packages define same-named messages (e.g. Driver, Profile, District)
+        let nestedType;
+        try {
+          nestedType = field.parent.lookupType(field.type);
+        } catch (e) {
+          nestedType = this.root.lookupType(field.type);
+        }
         if (nestedType) {
+          if (wireType !== 2) {
+            console.warn('[ProtoManager] Wire type mismatch for message field:', field.type, 'expected 2, got', wireType);
+            try { reader.skipType(wireType); } catch (e) { /* ignore */ }
+            return null;
+          }
           const nestedBytes = reader.bytes();
           return this.manualDecode(nestedType, nestedBytes);
         } else {
           console.warn('[ProtoManager] Unknown message type:', field.type);
-          reader.skipType(wireType);
+          try { reader.skipType(wireType); } catch (e) { /* ignore */ }
           return null;
         }
       } catch (e) {
         console.warn('[ProtoManager] Failed to lookup nested type:', field.type, e.message);
-        // Skip the field and return null
-        reader.skipType(wireType);
+        try { reader.skipType(wireType); } catch (e2) { /* ignore */ }
         return null;
       }
     }
