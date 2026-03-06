@@ -33,6 +33,7 @@ class NetworkDetails extends Component {
     searchText: '',
     copied: false,
     repeated: false,
+    editSent: false,
     editMode: false,
     editedData: null,
     requestTab: 'body', // 'headers' or 'body'
@@ -61,6 +62,7 @@ class NetworkDetails extends Component {
         searchText: '',
         copied: false,
         repeated: false,
+        editSent: false,
         editMode: false,
         editedData: null,
         requestTab: 'body',
@@ -138,7 +140,7 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, request, response, error, requestId } = entryToRender;
-    const { jsonCollapsed, editMode, editedData, repeated, requestCopied, requestCollapsed } = this.state;
+    const { jsonCollapsed, editMode, editedData, repeated, editSent, requestCopied, requestCollapsed } = this.state;
 
     // Raw request lookup (same strategies as _renderRequestSection)
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
@@ -168,13 +170,14 @@ class NetworkDetails extends Component {
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
 
     return (
-      <div className="request-section" style={{ height: '100%' }}>
+      <div className={`request-section${editMode ? ' edit-mode' : ''}`} style={{ height: '100%' }}>
         <div className="section-header">
           <span className="section-title">Request / Response</span>
+          {editMode && <span className="edit-mode-badge">✏ Editing</span>}
           <div className="section-actions">
             {editMode ? (
               <>
-                <button className="action-button" onClick={this._sendEditedRequest}>
+                <button className="action-button send" onClick={this._sendEditedRequest}>
                   <span>Send</span>
                   <RepeatIcon />
                 </button>
@@ -184,8 +187,8 @@ class NetworkDetails extends Component {
               </>
             ) : (
               <>
-                <button className="action-button" onClick={this._startEdit}>
-                  <span>Edit & Repeat</span>
+                <button className={`action-button ${editSent ? 'repeated' : ''}`} onClick={this._startEdit}>
+                  <span>{editSent ? 'Sent!!!' : 'Edit & Repeat'}</span>
                 </button>
                 <button
                   className={`action-button ${repeated ? 'repeated' : ''}`}
@@ -194,7 +197,7 @@ class NetworkDetails extends Component {
                     ? 'Repeat this request with original body'
                     : 'Cannot repeat: Original body not available'}
                 >
-                  <span>{repeated ? 'Sent!' : 'Repeat'}</span>
+                  <span>{repeated ? 'Sent!!!' : 'Repeat'}</span>
                   <RepeatIcon />
                 </button>
               </>
@@ -235,7 +238,7 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, request, requestId } = entryToRender;
-    const { requestTab, requestCollapsed, editMode, editedData, repeated, requestCopied } = this.state;
+    const { requestTab, requestCollapsed, editMode, editedData, repeated, editSent, requestCopied } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
 
@@ -304,9 +307,10 @@ class NetworkDetails extends Component {
     }
 
     return (
-      <div className="request-section" style={{ height: `${heightPercent}%` }}>
+      <div className={`request-section${editMode ? ' edit-mode' : ''}`} style={{ height: `${heightPercent}%` }}>
         <div className="section-header">
           <span className="section-title">Request</span>
+          {editMode && <span className="edit-mode-badge">✏ Editing</span>}
           <div className="section-tabs">
             <button
               className={`tab-button ${requestTab === 'headers' ? 'active' : ''}`}
@@ -324,7 +328,7 @@ class NetworkDetails extends Component {
           <div className="section-actions">
             {editMode ? (
               <>
-                <button className="action-button" onClick={this._sendEditedRequest}>
+                <button className="action-button send" onClick={this._sendEditedRequest}>
                   <span>Send</span>
                   <RepeatIcon />
                 </button>
@@ -334,8 +338,8 @@ class NetworkDetails extends Component {
               </>
             ) : (
               <>
-                <button className="action-button" onClick={this._startEdit}>
-                  <span>Edit & Repeat</span>
+                <button className={`action-button ${editSent ? 'repeated' : ''}`} onClick={this._startEdit}>
+                  <span>{editSent ? 'Sent!!!' : 'Edit & Repeat'}</span>
                 </button>
                 <button
                   className={`action-button ${repeated ? 'repeated' : ''}`}
@@ -349,7 +353,7 @@ class NetworkDetails extends Component {
                     ? 'Repeat this request with original body'
                     : 'Cannot repeat: Original body not available (will show error)'}
                 >
-                  <span>{repeated ? 'Sent!' : 'Repeat'}</span>
+                  <span>{repeated ? 'Sent!!!' : 'Repeat'}</span>
                   <RepeatIcon />
                 </button>
               </>
@@ -522,7 +526,7 @@ class NetworkDetails extends Component {
               title="Repeat request with same parameters"
               onClick={this._repeatRequest}
             >
-              <span>{repeated ? 'Sent!' : 'Repeat'}</span>
+              <span>{repeated ? 'Sent!!!' : 'Repeat'}</span>
               <RepeatIcon />
             </button>
             <button
@@ -1255,9 +1259,9 @@ class NetworkDetails extends Component {
         console.log('[Panel] ✓ Fetch triggered in page context');
         console.log('[Panel] Request will appear in gRPC list via window.postMessage');
 
-        // Show "Sent!" feedback and exit edit mode
-        this.setState({ repeated: true, editMode: false, editedData: null });
-        setTimeout(() => this.setState({ repeated: false }), 2000);
+        // Show "Sent!" feedback on Edit & Repeat button and exit edit mode
+        this.setState({ editSent: true, editMode: false, editedData: null });
+        setTimeout(() => this.setState({ editSent: false }), 2000);
       }
     });
   };
