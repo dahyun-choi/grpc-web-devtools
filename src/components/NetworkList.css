@@ -57,6 +57,18 @@
   color:rgb(216, 0, 0);
 }
 
+.data-grid .data .data-row.repeat {
+  background-color: var(--network-row-repeat);
+}
+
+.data-grid .data .data-row.repeat.odd {
+  background-color: var(--network-row-repeat-odd);
+}
+
+.data-grid .data .data-row.repeat.selected {
+  background-color: var(--selection-bg-color);
+}
+
 .data-grid .data-row {
   color: var(--toolbar-color);
   cursor: pointer;
@@ -133,6 +145,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-right: 8px;
+}
+
+.repeat-icon {
+  margin-left: 5px;
+  opacity: 0.5;
+  font-size: 11px;
 }
 
 .code-column {

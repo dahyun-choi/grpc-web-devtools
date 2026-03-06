@@ -36,7 +36,7 @@ class NetworkListRow extends PureComponent {
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     return (
       <div
-        className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""}`}
+        className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""} ${log.isRepeat ? "repeat" : ""}`}
         style={style}
         onClick={() => selectLogEntry(index)
         }
@@ -45,6 +45,7 @@ class NetworkListRow extends PureComponent {
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {log.endpoint}
+          {log.isRepeat && <span className="repeat-icon">↩</span>}
         </span>
         <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`}>{this.formatStatusCode(log.statusCode)}</span>
       </div >

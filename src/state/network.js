@@ -174,6 +174,7 @@ function buildSummaryEntry(entry) {
     timestamp: entry.timestamp,
     duration: entry.duration,
     statusCode: statusCode,
+    isRepeat: !!entry.isRepeat,
   };
 }
 
