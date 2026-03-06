@@ -10,6 +10,7 @@ const toolbarSlice = createSlice({
     filterValue: "",
     globalSearchValue: "",
     settingsOpen: false,
+    splitPanel: true,
   },
   reducers: {
     toggleFilter(state) {
@@ -27,11 +28,14 @@ const toolbarSlice = createSlice({
     setSettingsOpen(state, action) {
       state.settingsOpen = action.payload;
     },
+    setSplitPanel(state, action) {
+      state.splitPanel = action.payload;
+    },
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen } = actions;
+export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen, setSplitPanel } = actions;
 
 export default reducer

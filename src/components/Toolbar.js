@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
@@ -84,6 +84,15 @@ class Toolbar extends Component {
               />
               <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
             </span>
+            <span className="toolbar-item checkbox" title="Show request and response in separate panels">
+              <input
+                type="checkbox"
+                id="ui-checkbox-split-panel"
+                checked={toolbar.splitPanel}
+                onChange={this._onSplitPanelChanged}
+              />
+              <label htmlFor="ui-checkbox-split-panel">Split panel</label>
+            </span>
           </div>
         </div>
         {this._renderFilterToolbar()}
@@ -118,6 +127,11 @@ class Toolbar extends Component {
     const { applyGlobalSearch } = this.props;
     applyGlobalSearch(e.target.value);
   }
+
+  _onSplitPanelChanged = e => {
+    const { setSplitPanel } = this.props;
+    setSplitPanel(e.target.checked);
+  }
 }
 
 class ToolbarDivider extends Component {
@@ -149,6 +163,7 @@ const mapDispatchToProps = {
   toggleFilter,
   setFilterValue,
   setSettingsOpen,
+  setSplitPanel,
   applyGlobalSearch
 };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

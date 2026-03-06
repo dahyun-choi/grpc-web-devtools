@@ -107,8 +107,16 @@ class NetworkDetails extends Component {
   }
 
   render() {
-    const { entry } = this.props;
+    const { entry, splitPanel } = this.props;
     const { splitPosition, isDragging } = this.state;
+
+    if (!splitPanel) {
+      return (
+        <div className="widget vbox details-container" ref={this.containerRef}>
+          {this._renderMergedSection(entry)}
+        </div>
+      );
+    }
 
     return (
       <div className="widget vbox details-container" ref={this.containerRef}>
@@ -123,6 +131,103 @@ class NetworkDetails extends Component {
       </div>
     );
   }
+
+  _renderMergedSection = (entry) => {
+    if (!entry) return null;
+
+    const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+    const entryToRender = cachedEntry || entry;
+    const { method, request, response, error, requestId } = entryToRender;
+    const { jsonCollapsed, editMode, editedData, repeated, requestCopied, requestCollapsed } = this.state;
+
+    // Raw request lookup (same strategies as _renderRequestSection)
+    const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
+    let rawRequest = null;
+    if (requestId !== undefined) rawRequest = rawCache?.get(requestId);
+    if (!rawRequest && entry.entryId !== undefined) rawRequest = rawCache?.get(entry.entryId);
+    if (!rawRequest && method && entryToRender.timestamp && rawCache) {
+      rawRequest = rawCache.get(`${method}@${entryToRender.timestamp}`) || null;
+    }
+    if (!rawRequest && method && rawCache) {
+      let best = null, bestScore = Infinity;
+      const ts = entryToRender.timestamp || Date.now();
+      for (const [, v] of rawCache.entries()) {
+        if (v.url === method || v.url.includes(method) || method.includes(v.url)) {
+          const diff = Math.abs(ts - (v.timestamp || 0));
+          if (diff < bestScore) { bestScore = diff; best = v; }
+        }
+      }
+      rawRequest = best;
+    }
+
+    const merged = {};
+    if (request != null) merged.request = editMode && editedData?.request ? editedData.request : request;
+    if (error != null) merged.response = error;
+    else if (response != null) merged.response = response;
+
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+
+    return (
+      <div className="request-section" style={{ height: '100%' }}>
+        <div className="section-header">
+          <span className="section-title">Request / Response</span>
+          <div className="section-actions">
+            {editMode ? (
+              <>
+                <button className="action-button" onClick={this._sendEditedRequest}>
+                  <span>Send</span>
+                  <RepeatIcon />
+                </button>
+                <button className="action-button" onClick={this._cancelEdit}>
+                  <span>Cancel</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="action-button" onClick={this._startEdit}>
+                  <span>Edit & Repeat</span>
+                </button>
+                <button
+                  className={`action-button ${repeated ? 'repeated' : ''}`}
+                  onClick={this._repeatRequest}
+                  title={rawRequest?.body
+                    ? 'Repeat this request with original body'
+                    : 'Cannot repeat: Original body not available'}
+                >
+                  <span>{repeated ? 'Sent!' : 'Repeat'}</span>
+                  <RepeatIcon />
+                </button>
+              </>
+            )}
+            <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
+              <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
+              <CopyIcon />
+            </button>
+            <button className="action-button" onClick={this._toggleRequestExpand}>
+              <span>{requestCollapsed === false ? 'Collapse' : 'Expand'}</span>
+              {requestCollapsed === false ? <MinusIcon /> : <PlusIcon />}
+            </button>
+          </div>
+        </div>
+        <div className="section-content">
+          <ReactJson
+            key={`merged-${entry.entryId}-${requestCollapsed}-${editMode}`}
+            name={false}
+            theme={theme}
+            style={{ backgroundColor: "transparent" }}
+            enableClipboard={false}
+            collapsed={requestCollapsed}
+            displayDataTypes={false}
+            displayObjectSize={false}
+            src={merged}
+            onEdit={editMode ? this._onJsonEditMerged : false}
+            onAdd={editMode ? this._onJsonEditMerged : false}
+            onDelete={editMode ? this._onJsonEditMerged : false}
+          />
+        </div>
+      </div>
+    );
+  };
 
   _renderRequestSection = (entry, heightPercent) => {
     if (!entry) return null;
@@ -247,16 +352,16 @@ class NetworkDetails extends Component {
                   <span>{repeated ? 'Sent!' : 'Repeat'}</span>
                   <RepeatIcon />
                 </button>
-                <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
-                  <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
-                  <CopyIcon />
-                </button>
-                <button className="action-button" onClick={this._toggleRequestExpand}>
-                  <span>{requestCollapsed === false ? 'Collapse' : 'Expand'}</span>
-                  {requestCollapsed === false ? <MinusIcon /> : <PlusIcon />}
-                </button>
               </>
             )}
+            <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
+              <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
+              <CopyIcon />
+            </button>
+            <button className="action-button" onClick={this._toggleRequestExpand}>
+              <span>{requestCollapsed === false ? 'Collapse' : 'Expand'}</span>
+              {requestCollapsed === false ? <MinusIcon /> : <PlusIcon />}
+            </button>
           </div>
         </div>
         <div className="section-content">
@@ -562,7 +667,7 @@ class NetworkDetails extends Component {
         theme={theme}
         style={{ backgroundColor: "transparent" }}
         enableClipboard={false}
-        collapsed={editMode ? false : collapsed}
+        collapsed={collapsed}
         displayDataTypes={false}
         displayObjectSize={false}
         src={src}
@@ -711,6 +816,7 @@ class NetworkDetails extends Component {
     this.setState({
       editMode: true,
       editedData: editData,
+      requestCollapsed: false, // expand all on entering edit mode
     });
   };
 
@@ -731,6 +837,18 @@ class NetworkDetails extends Component {
       },
     }));
     return true; // Allow the edit
+  };
+
+  // For merged view: updated_src is { request: {...}, response: {...} }
+  // Extract only the request part for editedData
+  _onJsonEditMerged = (edit) => {
+    this.setState((prevState) => ({
+      editedData: {
+        ...prevState.editedData,
+        request: edit.updated_src.request,
+      },
+    }));
+    return true;
   };
 
   _sendEditedRequest = () => {
@@ -1694,7 +1812,8 @@ class NetworkDetails extends Component {
 
 const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
-  globalSearchValue: state.toolbar.globalSearchValue
+  globalSearchValue: state.toolbar.globalSearchValue,
+  splitPanel: state.toolbar.splitPanel,
 });
 const mapDispatchToProps = {
   openSettings: () => setSettingsOpen(true),
