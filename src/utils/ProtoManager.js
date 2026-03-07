@@ -862,7 +862,11 @@ class ProtoManager {
           }
         } else if (field.repeated) {
           if (!result[camelFieldName]) result[camelFieldName] = [];
-          result[camelFieldName].push(value);
+          if (value && value.__packedFallback) {
+            result[camelFieldName].push(...value.values);
+          } else {
+            result[camelFieldName].push(value);
+          }
         } else {
           result[camelFieldName] = value;
         }
@@ -1058,7 +1062,23 @@ class ProtoManager {
             } catch (e) { /* ignore peek errors */ }
           }
 
-          return this.manualDecode(nestedType, nestedBytes);
+          const decoded = this.manualDecode(nestedType, nestedBytes);
+          // If the message decoded to empty {} despite non-empty bytes, the binary
+          // likely contains packed varints (e.g. "repeated Message" schema but server
+          // sends packed enum/int32 values). Retry as packed int32 sequence.
+          if (decoded !== null && Object.keys(decoded).length === 0 && nestedBytes.length > 0) {
+            try {
+              const pr = protobuf.Reader.create(nestedBytes);
+              const packedVals = [];
+              while (pr.pos < pr.len) {
+                packedVals.push(pr.int32());
+              }
+              if (packedVals.length > 0) {
+                return { __packedFallback: true, values: packedVals };
+              }
+            } catch (e) { /* ignore, fall through to returning decoded */ }
+          }
+          return decoded;
         } else {
           console.warn('[ProtoManager] Unknown message type:', field.type);
           try { reader.skipType(wireType); } catch (e) { /* ignore */ }
