@@ -80,6 +80,12 @@ export function addNetworkEntry(entry) {
       if (!existingEntry.startTime) {
         existingEntry.startTime = Date.now();
       }
+      // For streaming: a new request means a new poll cycle — reset error and completion
+      // so the status reflects the fresh stream, not the previous cancelled/completed one.
+      if (existingEntry.methodType === 'server_streaming') {
+        existingEntry.error = null;
+        existingEntry.streamComplete = false;
+      }
     }
     if (entry.response != null) {
       if (existingEntry.methodType === 'server_streaming') {

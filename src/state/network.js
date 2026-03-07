@@ -189,7 +189,22 @@ function buildSummaryEntry(entry) {
 
 export const logNetworkEntry = (data) => (dispatch) => {
   const fullEntry = addNetworkEntry(data);
-  dispatch(networkLog(buildSummaryEntry(fullEntry)));
+  const summary = buildSummaryEntry(fullEntry);
+
+  // Streaming: explicitly resolve statusCode from current cache entry state.
+  // buildSummaryEntry may compute null/undefined when error.code is missing,
+  // or miss responses if there is a subtle ordering issue.
+  if (fullEntry.methodType === 'server_streaming') {
+    if (fullEntry.error) {
+      // Error occurred — ensure statusCode is never undefined/null
+      if (summary.statusCode == null) summary.statusCode = 2; // UNKNOWN
+    } else if (fullEntry.responses && fullEntry.responses.length > 0) {
+      // Responses received, no error → OK
+      summary.statusCode = 0;
+    }
+  }
+
+  dispatch(networkLog(summary));
   return fullEntry; // Return for linking with raw cache
 };
 
