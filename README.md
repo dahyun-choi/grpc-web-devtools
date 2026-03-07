@@ -123,6 +123,16 @@ Modify request parameters and resend with the **Edit & Repeat** button.
 - After sending, **Sent!!!** feedback appears on the Edit & Repeat button
 - If no proto files are uploaded, clicking Edit & Repeat opens the Settings panel automatically
 
+### Request/Response Diff
+
+Compare a repeated request against its original side-by-side using a git-style unified diff view.
+
+- Selecting a repeat entry (↩) automatically switches to the **Diff** tab in both the Request and Response panels
+- The **Diff** tab shows a color-coded unified diff: <span style="color:red">red lines (−)</span> are from the original, <span style="color:green">green lines (+)</span> are from the repeat
+- If nothing changed, a **"No differences"** indicator is shown
+- In **merged panel** mode (split off), a **Diff** toggle button appears in the section header — click to switch between the normal JSON view and a stacked diff showing request and response changes together
+- Click the **Body** button (or any other tab) to return to the normal view
+
 ### Split Panel Toggle
 
 A **Split panel** checkbox in the toolbar controls the detail view layout.
