@@ -1175,10 +1175,15 @@ class ProtoManager {
 
     for (const [filePath, content] of this.protoFiles.entries()) {
       if (packagePattern.test(content)) {
-        // Strip the importPath prefix so the result is relative to -import-path
-        return prefix && filePath.startsWith(prefix)
-          ? filePath.slice(prefix.length)
-          : filePath;
+        // Prefer service.proto in the same directory (e.g. api/opgw/v1/service.proto)
+        // regardless of which file actually declared the package.
+        const dir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
+        const serviceProtoFull = dir + 'service.proto';
+        const chosen = this.protoFiles.has(serviceProtoFull) ? serviceProtoFull : filePath;
+
+        return prefix && chosen.startsWith(prefix)
+          ? chosen.slice(prefix.length)
+          : chosen;
       }
     }
 
