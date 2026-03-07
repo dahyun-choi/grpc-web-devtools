@@ -92,6 +92,20 @@ const transport: Transport = ConnectTransportOptions({
 
 ## Added Features
 
+### Field Inspector
+
+Hover over any field key in the request or response JSON viewer to instantly see its protobuf schema metadata.
+
+- Enable with the **🔍 Inspector** toggle button in the section header (appears when proto files are uploaded)
+- **Hover** over a field key to show a floating tooltip with:
+  - **Field #** — protobuf field number
+  - **Type** — proto scalar or message type (e.g. `string`, `int32`, `Zone`)
+  - **Wire** — wire type code and label (e.g. `2 (length-delimited)`)
+  - **Rule** — field rule (`optional`, `repeated`, etc.)
+- **Click** a field key to pin the tooltip in the corner of the panel; click ✕ to dismiss
+- Works with both snake_case proto fields (e.g. `zone_id`) and their camelCase JSON representations (e.g. `zoneId`)
+- Searches recursively through nested message types when the field is not at the top level
+
 ### Proto File Upload & Binary Decoding
 
 Upload your `.proto` files in **Settings** to automatically decode protobuf binary messages into readable JSON. Without proto files, raw base64-encoded binary is displayed as-is.
