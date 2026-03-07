@@ -1235,11 +1235,12 @@ class ProtoManager {
     if (!this.root || !methodName || !fieldName) return null;
     try {
       const typeInfo = this.getMessageType(methodName);
-      console.warn('[Inspector] findFieldByName', { methodName, fieldName, kind, hasTypeInfo: !!typeInfo, reqType: typeInfo?.requestType?.name, resType: typeInfo?.responseType?.name });
-      if (!typeInfo) return null;
+      if (!typeInfo) { console.warn('[Inspector] typeInfo=null for', methodName); return null; }
       const rootType = kind === 'response' ? typeInfo.responseType : typeInfo.requestType;
+      const fieldKeys = rootType ? Object.keys(rootType.fields || {}).join(',') : 'null';
+      console.warn(`[Inspector] lookup field="${fieldName}" kind=${kind} rootType=${rootType?.name} keys=[${fieldKeys}]`);
       const result = this._searchField(rootType, fieldName, new Set());
-      console.warn('[Inspector] _searchField result', { fieldName, found: !!result, fields: rootType ? Object.keys(rootType.fields || {}) : [] });
+      console.warn(`[Inspector] result: found=${!!result}`);
       return result;
     } catch (e) {
       console.warn('[Inspector] findFieldByName error', e);
