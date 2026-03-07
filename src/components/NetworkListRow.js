@@ -52,6 +52,11 @@ class NetworkListRow extends PureComponent {
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {log.endpoint}
           {log.isRepeat && <span className="repeat-icon">↩</span>}
+          {log.streamCount > 0 && (
+            <span className="stream-count-badge" title={`${log.streamCount} streaming messages${log.streamComplete ? ' (complete)' : ' (streaming...)'}`}>
+              {log.streamCount}
+            </span>
+          )}
         </span>
         <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`}>{this.formatStatusCode(log.statusCode)}</span>
         <span className="duration-cell">{this.formatDuration(log.duration)}</span>

@@ -26,6 +26,38 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+class StreamResponseItem extends Component {
+  state = { collapsed: true };
+  _toggle = () => this.setState(s => ({ collapsed: !s.collapsed }));
+
+  render() {
+    const { index, response, theme } = this.props;
+    const { collapsed } = this.state;
+    return (
+      <div className="stream-response-item">
+        <div className="stream-response-header" onClick={this._toggle}>
+          <span className="stream-response-toggle">{collapsed ? '▶' : '▼'}</span>
+          <span className="stream-response-index">Message {index + 1}</span>
+        </div>
+        {!collapsed && (
+          <div className="stream-response-body">
+            <ReactJson
+              name={false}
+              theme={theme}
+              style={{ backgroundColor: "transparent" }}
+              enableClipboard={false}
+              collapsed={1}
+              displayDataTypes={false}
+              displayObjectSize={false}
+              src={response}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+}
+
 class NetworkDetails extends Component {
   state = {
     jsonCollapsed: 1,
@@ -139,7 +171,7 @@ class NetworkDetails extends Component {
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { method, request, response, error, requestId } = entryToRender;
+    const { method, request, response, responses, streamComplete, error, requestId } = entryToRender;
     const { jsonCollapsed, editMode, editedData, repeated, editSent, requestCopied, requestCollapsed } = this.state;
 
     // Raw request lookup (same strategies as _renderRequestSection)
@@ -165,6 +197,7 @@ class NetworkDetails extends Component {
     const merged = {};
     if (request != null) merged.request = editMode && editedData?.request ? editedData.request : request;
     if (error != null) merged.response = error;
+    else if (responses && responses.length > 0) merged.responses = responses;
     else if (response != null) merged.response = response;
 
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
@@ -381,7 +414,7 @@ class NetworkDetails extends Component {
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { method, response, error, requestId } = entryToRender;
+    const { method, response, responses, streamComplete, error, requestId } = entryToRender;
     const { responseTab, responseCollapsed, responseCopied } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
@@ -436,10 +469,14 @@ class NetworkDetails extends Component {
       }
     }
 
+    const isStreaming = Array.isArray(responses);
+
     return (
       <div className="response-section" style={{ height: `${heightPercent}%` }}>
         <div className="section-header">
-          <span className="section-title">Response</span>
+          <span className="section-title">
+            {isStreaming ? `Response Stream${responses.length > 0 ? ` (${responses.length})` : ''}` : 'Response'}
+          </span>
           <div className="section-tabs">
             <button
               className={`tab-button ${responseTab === 'headers' ? 'active' : ''}`}
@@ -467,7 +504,11 @@ class NetworkDetails extends Component {
         </div>
         <div className="section-content">
           {responseTab === 'headers' && this._renderResponseHeaders(rawRequest)}
-          {responseTab === 'body' && this._renderResponseBody(response, error, responseCollapsed)}
+          {responseTab === 'body' && (
+            isStreaming
+              ? this._renderStreamingResponses(responses, streamComplete)
+              : this._renderResponseBody(response, error, responseCollapsed)
+          )}
         </div>
       </div>
     );
@@ -753,6 +794,23 @@ class NetworkDetails extends Component {
         displayObjectSize={false}
         src={response}
       />
+    );
+  };
+
+  _renderStreamingResponses = (responses, streamComplete) => {
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+    if (!responses || responses.length === 0) {
+      return <div className="no-data">Waiting for streaming responses...</div>;
+    }
+    return (
+      <div className="stream-responses">
+        {responses.map((response, idx) => (
+          <StreamResponseItem key={idx} index={idx} response={response} theme={theme} />
+        ))}
+        {streamComplete && (
+          <div className="stream-complete">✓ Stream complete ({responses.length} messages)</div>
+        )}
+      </div>
     );
   };
 

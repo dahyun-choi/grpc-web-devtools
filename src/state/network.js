@@ -175,13 +175,15 @@ function buildSummaryEntry(entry) {
     method: entry.method,
     methodType: entry.methodType,
     request: !!entry.request,
-    response: !!entry.response,
+    response: !!(entry.response || (entry.responses && entry.responses.length > 0)),
     error: entry.error,
     requestId: entry.requestId,
     timestamp: entry.timestamp,
     duration: entry.duration,
     statusCode: statusCode,
     isRepeat: !!entry.isRepeat,
+    streamCount: entry.responses?.length ?? null,
+    streamComplete: entry.streamComplete ?? false,
   };
 }
 

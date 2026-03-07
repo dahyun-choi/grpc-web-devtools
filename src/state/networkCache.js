@@ -25,6 +25,9 @@ function estimatePayloadBytes(entry) {
   if (entry.response != null) {
     bytes += byteLength(safeStringify(entry.response));
   }
+  if (entry.responses != null) {
+    entry.responses.forEach(r => { bytes += byteLength(safeStringify(r)); });
+  }
   if (entry.error != null) {
     bytes += byteLength(safeStringify(entry.error));
   }
@@ -58,12 +61,24 @@ export function addNetworkEntry(entry) {
       }
     }
     if (entry.response != null) {
-      existingEntry.response = entry.response;
-      if (!existingEntry.endTime) {
+      if (existingEntry.methodType === 'server_streaming') {
+        if (!existingEntry.responses) existingEntry.responses = [];
+        if (entry.response !== 'EOF') {
+          existingEntry.responses.push(entry.response);
+        } else {
+          existingEntry.streamComplete = true;
+        }
         existingEntry.endTime = Date.now();
-        existingEntry.duration = entry.duration != null
-          ? entry.duration
-          : (existingEntry.startTime ? existingEntry.endTime - existingEntry.startTime : null);
+        existingEntry.duration = existingEntry.startTime
+          ? existingEntry.endTime - existingEntry.startTime : null;
+      } else {
+        existingEntry.response = entry.response;
+        if (!existingEntry.endTime) {
+          existingEntry.endTime = Date.now();
+          existingEntry.duration = entry.duration != null
+            ? entry.duration
+            : (existingEntry.startTime ? existingEntry.endTime - existingEntry.startTime : null);
+        }
       }
     }
     if (entry.error != null) {
@@ -92,6 +107,13 @@ export function addNetworkEntry(entry) {
     duration: entry.duration != null ? entry.duration : null,
     payloadBytes: estimatePayloadBytes(entry),
   };
+  // For streaming entries, accumulate responses in array instead of single field
+  if (entry.methodType === 'server_streaming') {
+    fullEntry.responses = (entry.response && entry.response !== 'EOF') ? [entry.response] : [];
+    fullEntry.streamComplete = entry.response === 'EOF';
+    fullEntry.response = null;
+    fullEntry.payloadBytes = estimatePayloadBytes(fullEntry);
+  }
   cache.set(entryId, fullEntry);
   order.push(entryId);
   if (entry.requestId) {

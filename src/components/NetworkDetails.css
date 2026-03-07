@@ -475,3 +475,58 @@
   opacity: 0.5;
   font-size: 12px;
 }
+
+/* Streaming response list */
+.stream-responses {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.stream-response-item {
+  border: 1px solid var(--divider-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stream-response-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--toolbar-bg-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+.stream-response-header:hover {
+  background: var(--network-row-hover);
+}
+
+.stream-response-toggle {
+  font-size: 9px;
+  color: var(--toolbar-color);
+  opacity: 0.6;
+  width: 10px;
+}
+
+.stream-response-index {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--toolbar-color);
+}
+
+.stream-response-body {
+  padding: 4px 8px;
+  border-top: 1px solid var(--divider-color);
+}
+
+.stream-complete {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--toolbar-color);
+  opacity: 0.6;
+  text-align: center;
+  font-style: italic;
+}

@@ -153,6 +153,23 @@
   color: #D69C29;
 }
 
+.stream-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent-color);
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
+  margin-left: 4px;
+  opacity: 0.85;
+  vertical-align: middle;
+}
+
 .code-column {
   width: 60px;
   min-width: 60px;
