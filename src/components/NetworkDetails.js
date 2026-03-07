@@ -2032,6 +2032,7 @@ class NetworkDetails extends Component {
     if (this.state.fieldTooltip?.name === fieldName) return; // no change
 
     const method = this._getMethodFromEntry();
+    console.warn('[Inspector] hover', { fieldName, method, kind });
     const info = method ? protoManager.findFieldByName(method, fieldName, kind) : null;
 
     this.setState({
