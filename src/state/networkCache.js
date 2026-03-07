@@ -37,6 +37,8 @@ function estimatePayloadBytes(entry) {
 const cache = new Map();
 const order = [];
 const requestIdToEntryId = new Map();
+// For server_streaming: group all responses from the same method into one entry
+const methodToStreamEntryId = new Map();
 let nextEntryId = 1;
 
 function evictIfNeeded() {
@@ -49,11 +51,30 @@ function evictIfNeeded() {
 }
 
 export function addNetworkEntry(entry) {
-  const existingEntryId = entry.requestId ? requestIdToEntryId.get(entry.requestId) : null;
+  // 1. Try lookup by requestId
+  let existingEntryId = entry.requestId ? requestIdToEntryId.get(entry.requestId) : null;
+
+  // 2. For streaming, also try lookup by method (handles polling-style streaming
+  //    where each poll creates a new requestId but should accumulate in one row)
+  if (!existingEntryId && entry.methodType === 'server_streaming' && entry.method) {
+    existingEntryId = methodToStreamEntryId.get(entry.method);
+    // Verify the entry still exists in cache (might have been evicted)
+    if (existingEntryId && !cache.has(existingEntryId)) {
+      methodToStreamEntryId.delete(entry.method);
+      existingEntryId = null;
+    }
+  }
+
   const existingEntry = existingEntryId ? cache.get(existingEntryId) : null;
   if (existingEntry) {
     if (entry.method && !existingEntry.method) existingEntry.method = entry.method;
     if (entry.methodType && !existingEntry.methodType) existingEntry.methodType = entry.methodType;
+
+    // Register new requestId → same entry (for future deduplication)
+    if (entry.requestId && !requestIdToEntryId.has(entry.requestId)) {
+      requestIdToEntryId.set(entry.requestId, existingEntry.entryId);
+    }
+
     if (entry.request != null) {
       existingEntry.request = entry.request;
       if (!existingEntry.startTime) {
@@ -68,6 +89,8 @@ export function addNetworkEntry(entry) {
         } else {
           existingEntry.streamComplete = true;
         }
+        // Update timestamp so the row shows the most recent response time
+        existingEntry.timestamp = Date.now();
         existingEntry.endTime = Date.now();
         existingEntry.duration = existingEntry.startTime
           ? existingEntry.endTime - existingEntry.startTime : null;
@@ -113,6 +136,8 @@ export function addNetworkEntry(entry) {
     fullEntry.streamComplete = entry.response === 'EOF';
     fullEntry.response = null;
     fullEntry.payloadBytes = estimatePayloadBytes(fullEntry);
+    // Register method → entryId for future deduplication
+    methodToStreamEntryId.set(entry.method, entryId);
   }
   cache.set(entryId, fullEntry);
   order.push(entryId);
@@ -131,6 +156,7 @@ export function clearNetworkCache() {
   cache.clear();
   order.length = 0;
   requestIdToEntryId.clear();
+  methodToStreamEntryId.clear();
 }
 
 export function getAllNetworkEntries() {

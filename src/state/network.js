@@ -163,7 +163,7 @@ function buildSummaryEntry(entry) {
     } else {
       statusCode = entry.error;
     }
-  } else if (entry.response) {
+  } else if (entry.response || (entry.responses && entry.responses.length > 0)) {
     statusCode = 0; // OK
   } else if (entry.responseBodyBase64 && entry.responseStatus === 200) {
     // HTTP 200 but response not decoded yet - still OK
