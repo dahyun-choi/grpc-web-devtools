@@ -1207,7 +1207,7 @@ class ProtoManager {
       let field = null;
       for (const name of path) {
         if (isNaN(name)) { // skip array indices
-          field = msgType.fields?.[name];
+          field = this._findFieldInType(msgType, name);
           if (!field) return null;
           try { field.resolve(); } catch (e) { /* ignore */ }
           if (field.resolvedType && field.resolvedType.fields) {
@@ -1235,24 +1235,30 @@ class ProtoManager {
     if (!this.root || !methodName || !fieldName) return null;
     try {
       const typeInfo = this.getMessageType(methodName);
-      if (!typeInfo) { console.warn('[Inspector] typeInfo=null for', methodName); return null; }
+      if (!typeInfo) return null;
       const rootType = kind === 'response' ? typeInfo.responseType : typeInfo.requestType;
-      const fieldKeys = rootType ? Object.keys(rootType.fields || {}).join(',') : 'null';
-      console.warn(`[Inspector] lookup field="${fieldName}" kind=${kind} rootType=${rootType?.name} keys=[${fieldKeys}]`);
-      const result = this._searchField(rootType, fieldName, new Set());
-      console.warn(`[Inspector] result: found=${!!result}`);
-      return result;
+      return this._searchField(rootType, fieldName, new Set());
     } catch (e) {
-      console.warn('[Inspector] findFieldByName error', e);
       return null;
     }
+  }
+
+  _findFieldInType(msgType, fieldName) {
+    // Direct key lookup (works when keepCase:false or field name has no underscores)
+    if (msgType.fields?.[fieldName]) return msgType.fields[fieldName];
+    // Search by original name or camelCase of original name (handles keepCase:true)
+    for (const f of Object.values(msgType.fields || {})) {
+      const camel = f.name.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      if (f.name === fieldName || camel === fieldName) return f;
+    }
+    return null;
   }
 
   _searchField(msgType, fieldName, visited) {
     if (!msgType || !msgType.fullName || visited.has(msgType.fullName)) return null;
     visited.add(msgType.fullName);
 
-    const field = msgType.fields?.[fieldName];
+    const field = this._findFieldInType(msgType, fieldName);
     if (field) {
       try { field.resolve(); } catch (e) { /* ignore */ }
       return {
