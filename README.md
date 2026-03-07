@@ -146,6 +146,18 @@ The gRPC request list includes a **duration column** showing the elapsed time fr
 
 Use the **Global search** field in the toolbar to filter the request list by searching across all request bodies, response bodies, methods, and error messages.
 
+### Server Streaming RPC
+
+Server-streaming RPCs are tracked in a single row that updates in place as messages arrive, similar to Proxyman/Postman.
+
+- All streaming messages from the same method accumulate in **one row** — polling-style streams (where each poll creates a new connection) are grouped automatically
+- A **stream count badge** on the row shows the number of messages received so far
+- The **Time** column reflects the timestamp of the most recent message
+- The **Code** column updates live: shows `OK` while receiving responses, the gRPC error code (e.g. `CANCELLED`) if the stream is aborted, and resets back to `OK` automatically when the stream resumes after being cancelled
+- The response panel shows an **accordion list** of all received messages (`Message 1`, `Message 2`, …), each with a per-message timestamp
+- Individual messages can be expanded/collapsed independently; the **Collapse/Expand** button in the section header controls all messages at once
+- A **✓ Stream complete** indicator appears when the server signals EOF
+
 ### Other Improvements
 
 - **OPTIONS preflight filtering** — preflight requests are hidden from the request list
