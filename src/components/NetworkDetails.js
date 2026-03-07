@@ -1198,7 +1198,7 @@ class NetworkDetails extends Component {
     method: 'POST',
     headers: headers,
     body: bytes,
-    credentials: 'include',
+    credentials: 'omit',
     mode: 'cors'
   })
   .then(response => {
@@ -1471,7 +1471,7 @@ class NetworkDetails extends Component {
     method: 'POST',
     headers: headers,
     body: bytes,
-    credentials: 'include',
+    credentials: 'omit',
     mode: 'cors'
   })
   .then(response => {
