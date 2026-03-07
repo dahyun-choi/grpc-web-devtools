@@ -538,3 +538,108 @@
   text-align: center;
   font-style: italic;
 }
+
+/* ── Inline diff view ────────────────────────────────────────────────────── */
+.diff-inline-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.diff-legend {
+  display: flex;
+  gap: 14px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--divider-color);
+  font-size: 11px;
+  flex-shrink: 0;
+  background: var(--toolbar-bg-color);
+}
+
+.diff-legend-remove { color: #d32f2f; }
+.diff-legend-add    { color: #2e7d32; }
+.diff-legend-equal  { color: var(--toolbar-color); opacity: 0.5; margin-left: auto; }
+
+@media (prefers-color-scheme: dark) {
+  .diff-legend-remove { color: #ef5350; }
+  .diff-legend-add    { color: #66bb6a; }
+}
+
+.diff-view {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.diff-line-add    { background: rgba(46, 125, 50, 0.15); }
+.diff-line-remove { background: rgba(211, 47, 47, 0.15); }
+.diff-line-same   { opacity: 0.75; }
+
+@media (prefers-color-scheme: dark) {
+  .diff-line-add    { background: rgba(102, 187, 106, 0.12); }
+  .diff-line-remove { background: rgba(239, 83, 80, 0.12); }
+}
+
+.diff-line-prefix {
+  user-select: none;
+  width: 14px;
+  flex-shrink: 0;
+  font-weight: bold;
+}
+
+.diff-line-add .diff-line-prefix    { color: #2e7d32; }
+.diff-line-remove .diff-line-prefix { color: #d32f2f; }
+
+@media (prefers-color-scheme: dark) {
+  .diff-line-add .diff-line-prefix    { color: #66bb6a; }
+  .diff-line-remove .diff-line-prefix { color: #ef5350; }
+}
+
+.diff-line-content {
+  flex: 1;
+  color: var(--toolbar-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* merged 뷰에서 request/response diff 구분 레이블 */
+.merged-diff-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.diff-section-label {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--toolbar-color);
+  background: var(--toolbar-bg-color);
+  border-top: 1px solid var(--divider-color);
+  border-bottom: 1px solid var(--divider-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.merged-diff-view .diff-inline-view {
+  flex-shrink: 0;
+}
+
+/* Diff 탭 활성 버튼 */
+.action-button.active {
+  background: var(--selection-bg-color);
+  color: var(--selection-fg-color);
+}

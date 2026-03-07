@@ -78,6 +78,39 @@ class StreamResponseItem extends Component {
   }
 }
 
+function diffLines(oldStr, newStr) {
+  const a = oldStr.split('\n');
+  const b = newStr.split('\n');
+  const m = a.length;
+  const n = b.length;
+  if (m > 800 || n > 800) {
+    return [{ type: 'same', value: '(payload too large to diff)' }];
+  }
+  const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+      result.unshift({ type: 'same', value: a[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ type: 'add', value: b[j - 1] });
+      j--;
+    } else {
+      result.unshift({ type: 'remove', value: a[i - 1] });
+      i--;
+    }
+  }
+  return result;
+}
+
 class NetworkDetails extends Component {
   state = {
     jsonCollapsed: 1,
@@ -96,6 +129,7 @@ class NetworkDetails extends Component {
     responseCopied: false,
     splitPosition: 50, // Percentage of request section height
     isDragging: false,
+    showDiff: false,
   };
 
   jsonContainerRef = React.createRef();
@@ -108,6 +142,8 @@ class NetworkDetails extends Component {
     const entryChanged = prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId;
 
     if (entryChanged) {
+      const isRepeat = this.props.entry?.isRepeat;
+      const defaultTab = isRepeat ? 'diff' : 'body';
       this.setState({
         jsonCollapsed: 1,
         lastEntryId: nextEntryId,
@@ -117,12 +153,13 @@ class NetworkDetails extends Component {
         editSent: false,
         editMode: false,
         editedData: null,
-        requestTab: 'body',
-        responseTab: 'body',
+        requestTab: defaultTab,
+        responseTab: defaultTab,
         requestCollapsed: false,
         responseCollapsed: false,
         requestCopied: false,
         responseCopied: false,
+        showDiff: !!isRepeat,
       });
     }
 
@@ -192,7 +229,7 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, request, response, responses, streamComplete, error, requestId } = entryToRender;
-    const { jsonCollapsed, editMode, editedData, repeated, editSent, requestCopied, requestCollapsed } = this.state;
+    const { jsonCollapsed, editMode, editedData, repeated, editSent, requestCopied, requestCollapsed, showDiff } = this.state;
 
     // Raw request lookup (same strategies as _renderRequestSection)
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
@@ -255,6 +292,14 @@ class NetworkDetails extends Component {
                 </button>
               </>
             )}
+            {!editMode && entry.isRepeat && (
+              <button
+                className={`action-button${showDiff ? ' active' : ''}`}
+                onClick={() => this.setState(s => ({ showDiff: !s.showDiff }))}
+              >
+                <span>{showDiff ? 'Body' : 'Diff'}</span>
+              </button>
+            )}
             <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
               <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
               <CopyIcon />
@@ -266,20 +311,29 @@ class NetworkDetails extends Component {
           </div>
         </div>
         <div className="section-content">
-          <ReactJson
-            key={`merged-${entry.entryId}-${requestCollapsed}-${editMode}`}
-            name={false}
-            theme={theme}
-            style={{ backgroundColor: "transparent" }}
-            enableClipboard={false}
-            collapsed={requestCollapsed}
-            displayDataTypes={false}
-            displayObjectSize={false}
-            src={merged}
-            onEdit={editMode ? this._onJsonEditMerged : false}
-            onAdd={editMode ? this._onJsonEditMerged : false}
-            onDelete={editMode ? this._onJsonEditMerged : false}
-          />
+          {showDiff && entry.isRepeat ? (
+            <div className="merged-diff-view">
+              <div className="diff-section-label">Request</div>
+              {this._renderInlineDiff(entry, 'request')}
+              <div className="diff-section-label">Response</div>
+              {this._renderInlineDiff(entry, 'response')}
+            </div>
+          ) : (
+            <ReactJson
+              key={`merged-${entry.entryId}-${requestCollapsed}-${editMode}`}
+              name={false}
+              theme={theme}
+              style={{ backgroundColor: "transparent" }}
+              enableClipboard={false}
+              collapsed={requestCollapsed}
+              displayDataTypes={false}
+              displayObjectSize={false}
+              src={merged}
+              onEdit={editMode ? this._onJsonEditMerged : false}
+              onAdd={editMode ? this._onJsonEditMerged : false}
+              onDelete={editMode ? this._onJsonEditMerged : false}
+            />
+          )}
         </div>
       </div>
     );
@@ -365,6 +419,14 @@ class NetworkDetails extends Component {
           <span className="section-title">Request</span>
           {editMode && <span className="edit-mode-badge">✏ Editing</span>}
           <div className="section-tabs">
+            {entry.isRepeat && (
+              <button
+                className={`tab-button ${requestTab === 'diff' ? 'active' : ''}`}
+                onClick={() => this.setState({ requestTab: 'diff' })}
+              >
+                Diff
+              </button>
+            )}
             <button
               className={`tab-button ${requestTab === 'headers' ? 'active' : ''}`}
               onClick={() => this.setState({ requestTab: 'headers' })}
@@ -424,6 +486,7 @@ class NetworkDetails extends Component {
         <div className="section-content">
           {requestTab === 'headers' && this._renderRequestHeaders(rawRequest)}
           {requestTab === 'body' && this._renderRequestBody(method, request, editMode, editedData, requestCollapsed)}
+          {requestTab === 'diff' && this._renderInlineDiff(entry, 'request')}
         </div>
       </div>
     );
@@ -498,6 +561,14 @@ class NetworkDetails extends Component {
             {isStreaming ? `Response Stream${responses.length > 0 ? ` (${responses.length})` : ''}` : 'Response'}
           </span>
           <div className="section-tabs">
+            {entry.isRepeat && (
+              <button
+                className={`tab-button ${responseTab === 'diff' ? 'active' : ''}`}
+                onClick={() => this.setState({ responseTab: 'diff' })}
+              >
+                Diff
+              </button>
+            )}
             <button
               className={`tab-button ${responseTab === 'headers' ? 'active' : ''}`}
               onClick={() => this.setState({ responseTab: 'headers' })}
@@ -529,6 +600,7 @@ class NetworkDetails extends Component {
               ? this._renderStreamingResponses(responses, streamComplete, responseCollapsed)
               : this._renderResponseBody(response, error, responseCollapsed)
           )}
+          {responseTab === 'diff' && this._renderInlineDiff(entry, 'response')}
         </div>
       </div>
     );
@@ -1890,12 +1962,75 @@ class NetworkDetails extends Component {
     }
   };
 
+  _findOriginalEntry = (entry) => {
+    const { log } = this.props;
+    if (!entry || !log) return null;
+    const repeatSummary = log.find(en => en.entryId === entry.entryId);
+    if (!repeatSummary) return null;
+    const originalSummary = log
+      .filter(en => en.method === repeatSummary.method && !en.isRepeat && en.timestamp < repeatSummary.timestamp)
+      .reduce((best, en) => (!best || en.timestamp > best.timestamp) ? en : best, null);
+    return originalSummary ? getNetworkEntry(originalSummary.entryId) : null;
+  };
+
+  _renderInlineDiff = (entry, field) => {
+    const currentFull = entry?.entryId ? getNetworkEntry(entry.entryId) : null;
+    const originalFull = this._findOriginalEntry(entry);
+
+    if (!originalFull) {
+      return <div className="no-data">Original entry not found</div>;
+    }
+
+    let currentData, originalData;
+    if (field === 'request') {
+      currentData = currentFull?.request ?? {};
+      originalData = originalFull?.request ?? {};
+    } else {
+      if (currentFull?.responses) {
+        currentData = currentFull.responses.map(r => r.data ?? r);
+      } else {
+        currentData = currentFull?.response ?? currentFull?.error ?? {};
+      }
+      if (originalFull?.responses) {
+        originalData = originalFull.responses.map(r => r.data ?? r);
+      } else {
+        originalData = originalFull?.response ?? originalFull?.error ?? {};
+      }
+    }
+
+    const originalStr = JSON.stringify(originalData, null, 2);
+    const currentStr = JSON.stringify(currentData, null, 2);
+    const diff = diffLines(originalStr, currentStr);
+    const hasChanges = diff.some(l => l.type !== 'same');
+
+    return (
+      <div className="diff-inline-view">
+        <div className="diff-legend">
+          <span className="diff-legend-remove">― Original</span>
+          <span className="diff-legend-add">― Repeat</span>
+          {!hasChanges && <span className="diff-legend-equal">No differences</span>}
+        </div>
+        <div className="diff-view">
+          {diff.map((line, i) => (
+            <div key={i} className={`diff-line diff-line-${line.type}`}>
+              <span className="diff-line-prefix">
+                {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
+              </span>
+              <span className="diff-line-content">{line.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
 }
 
 const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   globalSearchValue: state.toolbar.globalSearchValue,
   splitPanel: state.toolbar.splitPanel,
+  log: state.network.log,
 });
 const mapDispatchToProps = {
   openSettings: () => setSettingsOpen(true),

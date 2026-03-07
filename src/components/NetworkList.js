@@ -10,6 +10,8 @@ import protoManager from '../utils/ProtoManager';
 
 import './NetworkList.css';
 
+// ── grpcurl command builder ──────────────────────────────────────────────────
+
 function buildGrpcurlCommand(summaryEntry, fullEntry) {
   let server = '<server>:<port>';
   let methodPath = summaryEntry.method || '';
@@ -31,8 +33,6 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
 
   const protoStatus = protoManager.getStatus();
   if (protoStatus.ready && protoStatus.files.length > 0) {
-    // Try to find the specific proto file that declares this method's package.
-    // Falls back to listing all proto files if no match is found.
     const matchedProto = protoManager.findProtoFileForMethod(summaryEntry.method);
     if (matchedProto) {
       args.push(`-proto ${matchedProto}`);
@@ -51,7 +51,6 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
   if (usePlaintext) args.push('-plaintext');
 
   const requestJson = JSON.stringify(fullEntry?.request ?? {}, null, 2);
-  // Escape single quotes inside the JSON for shell safety
   const escapedJson = requestJson.replace(/'/g, "'\\''");
   args.push(`-d '${escapedJson}'`);
 
@@ -60,6 +59,8 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
 
   return args.join(' \\\n  ');
 }
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 class NetworkList extends Component {
   constructor(props) {
@@ -74,7 +75,6 @@ class NetworkList extends Component {
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
-    // Cache itemData to avoid unnecessary react-window re-renders
     this._cachedLog = null;
     this._cachedItemData = null;
   }
@@ -161,18 +161,10 @@ class NetworkList extends Component {
               <table className="header">
                 <tbody>
                   <tr>
-                    <th className="time-column">
-                      <div>Time</div>
-                    </th>
-                    <th>
-                      <div>Name</div>
-                    </th>
-                    <th className="code-column">
-                      <div>Code</div>
-                    </th>
-                    <th className="duration-column">
-                      <div>Time</div>
-                    </th>
+                    <th className="time-column"><div>Time</div></th>
+                    <th><div>Name</div></th>
+                    <th className="code-column"><div>Code</div></th>
+                    <th className="duration-column"><div>Time</div></th>
                   </tr>
                 </tbody>
               </table>
@@ -235,6 +227,7 @@ class NetworkList extends Component {
             </div>
           </div>
         )}
+
       </div>
     );
   }
