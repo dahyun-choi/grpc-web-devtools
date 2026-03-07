@@ -192,3 +192,33 @@
 .settings-note strong {
   font-weight: 600;
 }
+
+.settings-import-path-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-import-path-input {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: monospace;
+  border: 1px solid var(--divider-color);
+  border-radius: 4px;
+  background: var(--toolbar-bg-color);
+  color: var(--toolbar-color);
+  outline: none;
+}
+
+.settings-import-path-input:focus {
+  border-color: #2196F3;
+}
+
+.settings-description code {
+  font-family: monospace;
+  background: var(--toolbar-bg-color);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}

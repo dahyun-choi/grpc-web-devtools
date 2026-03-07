@@ -32,7 +32,9 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
   const protoStatus = protoManager.getStatus();
   if (protoStatus.ready && protoStatus.files.length > 0) {
     protoStatus.files.forEach(f => args.push(`-proto ${f}`));
-    args.push('-import-path <proto-import-dir>');
+    if (protoStatus.importPath) {
+      args.push(`-import-path ${protoStatus.importPath}`);
+    }
   }
 
   if (usePlaintext) args.push('-plaintext');

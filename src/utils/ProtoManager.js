@@ -6,12 +6,14 @@ import pako from 'pako';
 
 const STORAGE_KEY = 'grpc_devtools_proto_files';
 const STORAGE_KEY_ROOT = 'grpc_devtools_proto_root';
+const STORAGE_KEY_IMPORT_PATH = 'grpc_devtools_proto_import_path';
 
 class ProtoManager {
   constructor() {
     this.protoFiles = new Map(); // path -> content
     this.root = null;
     this.messageTypes = new Map(); // method name -> message type info
+    this.importPath = ''; // user-configured import path for grpcurl
   }
 
   async initialize() {
@@ -19,7 +21,7 @@ class ProtoManager {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       try {
         const result = await new Promise((resolve) => {
-          chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_ROOT], resolve);
+          chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_ROOT, STORAGE_KEY_IMPORT_PATH], resolve);
         });
 
         if (result[STORAGE_KEY]) {
@@ -31,6 +33,10 @@ class ProtoManager {
 
           // Rebuild root from cached files
           await this.buildRoot();
+        }
+
+        if (result[STORAGE_KEY_IMPORT_PATH] != null) {
+          this.importPath = result[STORAGE_KEY_IMPORT_PATH];
         }
       } catch (error) {
         console.error('[ProtoManager] Failed to load from storage:', error);
@@ -557,6 +563,7 @@ class ProtoManager {
         chrome.storage.local.remove([STORAGE_KEY, STORAGE_KEY_ROOT], resolve);
       });
       console.log('[ProtoManager] Cleared storage');
+      // Note: importPath is intentionally kept across proto file clears
     }
   }
 
@@ -1133,7 +1140,17 @@ class ProtoManager {
       ready: this.isReady(),
       fileCount: this.protoFiles.size,
       files: Array.from(this.protoFiles.keys()),
+      importPath: this.importPath,
     };
+  }
+
+  async setImportPath(path) {
+    this.importPath = path;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      await new Promise((resolve) => {
+        chrome.storage.local.set({ [STORAGE_KEY_IMPORT_PATH]: path }, resolve);
+      });
+    }
   }
 }
 
