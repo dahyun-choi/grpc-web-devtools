@@ -31,12 +31,18 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
 
   const protoStatus = protoManager.getStatus();
   if (protoStatus.ready && protoStatus.files.length > 0) {
-    const prefix = protoStatus.importPath ? protoStatus.importPath + '/' : '';
-    protoStatus.files.forEach(f => {
-      // Strip the import-path root prefix so -proto is relative to -import-path
-      const protoPath = prefix && f.startsWith(prefix) ? f.slice(prefix.length) : f;
-      args.push(`-proto ${protoPath}`);
-    });
+    // Try to find the specific proto file that declares this method's package.
+    // Falls back to listing all proto files if no match is found.
+    const matchedProto = protoManager.findProtoFileForMethod(summaryEntry.method);
+    if (matchedProto) {
+      args.push(`-proto ${matchedProto}`);
+    } else {
+      const prefix = protoStatus.importPath ? protoStatus.importPath + '/' : '';
+      protoStatus.files.forEach(f => {
+        const protoPath = prefix && f.startsWith(prefix) ? f.slice(prefix.length) : f;
+        args.push(`-proto ${protoPath}`);
+      });
+    }
     if (protoStatus.importPath) {
       args.push(`-import-path ${protoStatus.importPath}`);
     }

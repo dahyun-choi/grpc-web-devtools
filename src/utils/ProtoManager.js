@@ -1148,6 +1148,43 @@ class ProtoManager {
     return frame;
   }
 
+  /**
+   * Find the proto file that declares the package matching the given gRPC method.
+   * e.g. method "https://host/opgwv1.OpGw/ListLines" → package "opgwv1"
+   *      → searches proto file contents for "package opgwv1" → returns "api/opgw/v1/service.proto"
+   * Returns the path relative to importPath (for use with -proto flag), or null if not found.
+   */
+  findProtoFileForMethod(methodName) {
+    if (!methodName) return null;
+
+    // Extract the path portion (strip scheme+host if present)
+    let path = methodName;
+    try {
+      path = new URL(methodName).pathname;
+    } catch (_) { /* not a full URL, use as-is */ }
+    if (path.startsWith('/')) path = path.slice(1);
+
+    // Package name is the part before the first dot: "opgwv1.OpGw/ListLines" → "opgwv1"
+    const dotIdx = path.indexOf('.');
+    if (dotIdx < 0) return null;
+    const packageName = path.slice(0, dotIdx);
+    if (!packageName) return null;
+
+    const packagePattern = new RegExp(`\\bpackage\\s+${packageName}\\b`);
+    const prefix = this.importPath ? this.importPath + '/' : '';
+
+    for (const [filePath, content] of this.protoFiles.entries()) {
+      if (packagePattern.test(content)) {
+        // Strip the importPath prefix so the result is relative to -import-path
+        return prefix && filePath.startsWith(prefix)
+          ? filePath.slice(prefix.length)
+          : filePath;
+      }
+    }
+
+    return null; // no matching file found
+  }
+
   isReady() {
     return this.root !== null && this.protoFiles.size > 0;
   }
