@@ -38,14 +38,15 @@ class NetworkListRow extends PureComponent {
 
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const log = data[index];
+    const { log: logArray, onContextMenu } = data;
+    const log = logArray[index];
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     return (
       <div
         className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""} ${log.isRepeat ? "repeat" : ""}`}
         style={style}
-        onClick={() => selectLogEntry(index)
-        }
+        onClick={() => selectLogEntry(index)}
+        onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(e, log.entryId); }}
       >
         <span className="time-cell">{this.formatTime(log.timestamp)}</span>
         <span className="name-cell">
