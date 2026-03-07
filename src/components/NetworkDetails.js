@@ -38,6 +38,13 @@ function formatStreamTime(timestamp) {
 
 class StreamResponseItem extends Component {
   state = { collapsed: true };
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.parentCollapsed !== this.props.parentCollapsed) {
+      this.setState({ collapsed: this.props.parentCollapsed !== false });
+    }
+  }
+
   _toggle = () => this.setState(s => ({ collapsed: !s.collapsed }));
 
   render() {
@@ -519,7 +526,7 @@ class NetworkDetails extends Component {
           {responseTab === 'headers' && this._renderResponseHeaders(rawRequest)}
           {responseTab === 'body' && (
             isStreaming
-              ? this._renderStreamingResponses(responses, streamComplete)
+              ? this._renderStreamingResponses(responses, streamComplete, responseCollapsed)
               : this._renderResponseBody(response, error, responseCollapsed)
           )}
         </div>
@@ -810,7 +817,7 @@ class NetworkDetails extends Component {
     );
   };
 
-  _renderStreamingResponses = (responses, streamComplete) => {
+  _renderStreamingResponses = (responses, streamComplete, responseCollapsed) => {
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
     if (!responses || responses.length === 0) {
       return <div className="no-data">Waiting for streaming responses...</div>;
@@ -818,7 +825,7 @@ class NetworkDetails extends Component {
     return (
       <div className="stream-responses">
         {responses.map((item, idx) => (
-          <StreamResponseItem key={idx} index={idx} item={item} theme={theme} />
+          <StreamResponseItem key={idx} index={idx} item={item} theme={theme} parentCollapsed={responseCollapsed} />
         ))}
         {streamComplete && (
           <div className="stream-complete">✓ Stream complete ({responses.length} messages)</div>
