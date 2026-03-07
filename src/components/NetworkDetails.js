@@ -130,7 +130,6 @@ class NetworkDetails extends Component {
     splitPosition: 50, // Percentage of request section height
     isDragging: false,
     showDiff: false,
-    fieldInspectorEnabled: false,
     fieldTooltip: null, // { x, y, name, info, pinned }
   };
 
@@ -350,7 +349,8 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, request, requestId } = entryToRender;
-    const { requestTab, requestCollapsed, editMode, editedData, repeated, editSent, requestCopied, fieldInspectorEnabled } = this.state;
+    const { requestTab, requestCollapsed, editMode, editedData, repeated, editSent, requestCopied } = this.state;
+    const fieldInspectorEnabled = this.props.fieldInspector;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
 
@@ -478,15 +478,6 @@ class NetworkDetails extends Component {
                 </button>
               </>
             )}
-            {!editMode && protoManager.isReady() && (
-              <button
-                className={`action-button${fieldInspectorEnabled ? ' active' : ''}`}
-                onClick={() => this.setState(s => ({ fieldInspectorEnabled: !s.fieldInspectorEnabled, fieldTooltip: null }))}
-                title="Field Inspector — hover or click fields to see field number, type, wire type"
-              >
-                <span>Inspector</span>
-              </button>
-            )}
             <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
               <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
               <CopyIcon />
@@ -516,7 +507,8 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, response, responses, streamComplete, error, requestId } = entryToRender;
-    const { responseTab, responseCollapsed, responseCopied, fieldInspectorEnabled } = this.state;
+    const { responseTab, responseCollapsed, responseCopied } = this.state;
+    const fieldInspectorEnabled = this.props.fieldInspector;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
 
@@ -601,15 +593,6 @@ class NetworkDetails extends Component {
             </button>
           </div>
           <div className="section-actions">
-            {protoManager.isReady() && (
-              <button
-                className={`action-button${fieldInspectorEnabled ? ' active' : ''}`}
-                onClick={() => this.setState(s => ({ fieldInspectorEnabled: !s.fieldInspectorEnabled, fieldTooltip: null }))}
-                title="Field Inspector — hover or click fields to see field number, type, wire type"
-              >
-                <span>Inspector</span>
-              </button>
-            )}
             <button className={`action-button ${responseCopied ? 'copied' : ''}`} onClick={this._copyResponseToClipboard}>
               <span>{responseCopied ? 'Copied!' : 'Copy'}</span>
               <CopyIcon />
@@ -2014,7 +1997,7 @@ class NetworkDetails extends Component {
   }
 
   _onSectionMouseMove = (e, kind) => {
-    if (!this.state.fieldInspectorEnabled) return;
+    if (!this.props.fieldInspector) return;
     if (this.state.fieldTooltip?.pinned) return;
 
     const keyEl = this._findObjectKeyEl(e.target, e.currentTarget);
@@ -2046,7 +2029,7 @@ class NetworkDetails extends Component {
   };
 
   _onFieldSelect = (select, kind) => {
-    if (!this.state.fieldInspectorEnabled) return;
+    if (!this.props.fieldInspector) return;
     const { name, namespace } = select;
     const path = (namespace || []).filter(n => n !== 'root' && typeof n === 'string' && isNaN(n));
     const method = this._getMethodFromEntry();
@@ -2055,7 +2038,8 @@ class NetworkDetails extends Component {
   };
 
   _renderFieldTooltip = () => {
-    const { fieldTooltip, fieldInspectorEnabled } = this.state;
+    const { fieldTooltip } = this.state;
+    const fieldInspectorEnabled = this.props.fieldInspector;
     if (!fieldInspectorEnabled || !fieldTooltip) return null;
 
     const { x, y, name, info, pinned } = fieldTooltip;
@@ -2153,6 +2137,7 @@ const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   globalSearchValue: state.toolbar.globalSearchValue,
   splitPanel: state.toolbar.splitPanel,
+  fieldInspector: state.toolbar.fieldInspector,
   log: state.network.log,
 });
 const mapDispatchToProps = {

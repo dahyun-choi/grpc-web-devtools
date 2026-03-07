@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
@@ -93,6 +93,15 @@ class Toolbar extends Component {
               />
               <label htmlFor="ui-checkbox-split-panel">Split panel</label>
             </span>
+            <span className="toolbar-item checkbox" title="Hover or click JSON fields to see field number, proto type, and wire type">
+              <input
+                type="checkbox"
+                id="ui-checkbox-field-inspector"
+                checked={toolbar.fieldInspector}
+                onChange={this._onFieldInspectorChanged}
+              />
+              <label htmlFor="ui-checkbox-field-inspector">Field inspector</label>
+            </span>
           </div>
         </div>
         {this._renderFilterToolbar()}
@@ -132,6 +141,11 @@ class Toolbar extends Component {
     const { setSplitPanel } = this.props;
     setSplitPanel(e.target.checked);
   }
+
+  _onFieldInspectorChanged = e => {
+    const { setFieldInspector } = this.props;
+    setFieldInspector(e.target.checked);
+  }
 }
 
 class ToolbarDivider extends Component {
@@ -164,6 +178,7 @@ const mapDispatchToProps = {
   setFilterValue,
   setSettingsOpen,
   setSplitPanel,
+  setFieldInspector,
   applyGlobalSearch
 };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);
