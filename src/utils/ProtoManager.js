@@ -1190,6 +1190,94 @@ class ProtoManager {
     return null; // no matching file found
   }
 
+  // ── Field Inspector ───────────────────────────────────────────────────────
+
+  /**
+   * Precise field lookup by full path array.
+   * path = ['demand', 'serviceType']  kind = 'request' | 'response'
+   */
+  getFieldInfo(methodName, path, kind = 'request') {
+    if (!this.root || !methodName || !path || path.length === 0) return null;
+    try {
+      const typeInfo = this.getMessageType(methodName);
+      if (!typeInfo) return null;
+      let msgType = kind === 'response' ? typeInfo.responseType : typeInfo.requestType;
+      if (!msgType) return null;
+
+      let field = null;
+      for (const name of path) {
+        if (isNaN(name)) { // skip array indices
+          field = msgType.fields?.[name];
+          if (!field) return null;
+          try { field.resolve(); } catch (e) { /* ignore */ }
+          if (field.resolvedType && field.resolvedType.fields) {
+            msgType = field.resolvedType;
+          }
+        }
+      }
+      if (!field) return null;
+      return {
+        number: field.id,
+        protoType: field.type,
+        wireType: this._getWireType(field.type),
+        rule: field.rule || 'optional',
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Best-effort field lookup by name only (recursive search across all nested types).
+   * Used for hover tooltip where full path is unavailable.
+   */
+  findFieldByName(methodName, fieldName, kind = 'request') {
+    if (!this.root || !methodName || !fieldName) return null;
+    try {
+      const typeInfo = this.getMessageType(methodName);
+      if (!typeInfo) return null;
+      const rootType = kind === 'response' ? typeInfo.responseType : typeInfo.requestType;
+      return this._searchField(rootType, fieldName, new Set());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _searchField(msgType, fieldName, visited) {
+    if (!msgType || !msgType.fullName || visited.has(msgType.fullName)) return null;
+    visited.add(msgType.fullName);
+
+    const field = msgType.fields?.[fieldName];
+    if (field) {
+      try { field.resolve(); } catch (e) { /* ignore */ }
+      return {
+        number: field.id,
+        protoType: field.type,
+        wireType: this._getWireType(field.type),
+        rule: field.rule || 'optional',
+      };
+    }
+
+    for (const f of Object.values(msgType.fields || {})) {
+      try { f.resolve(); } catch (e) { /* ignore */ }
+      if (f.resolvedType && f.resolvedType.fields) {
+        const result = this._searchField(f.resolvedType, fieldName, visited);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  _getWireType(type) {
+    if (['int32','int64','uint32','uint64','sint32','sint64','bool'].includes(type))
+      return { code: 0, label: 'varint' };
+    if (['fixed64','sfixed64','double'].includes(type))
+      return { code: 1, label: '64-bit' };
+    if (['fixed32','sfixed32','float'].includes(type))
+      return { code: 5, label: '32-bit' };
+    return { code: 2, label: 'length-delimited' };
+  }
+
   isReady() {
     return this.root !== null && this.protoFiles.size > 0;
   }

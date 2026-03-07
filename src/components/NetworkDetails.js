@@ -130,6 +130,8 @@ class NetworkDetails extends Component {
     splitPosition: 50, // Percentage of request section height
     isDragging: false,
     showDiff: false,
+    fieldInspectorEnabled: false,
+    fieldTooltip: null, // { x, y, name, info, pinned }
   };
 
   jsonContainerRef = React.createRef();
@@ -160,6 +162,7 @@ class NetworkDetails extends Component {
         requestCopied: false,
         responseCopied: false,
         showDiff: !!isRepeat,
+        fieldTooltip: null,
       });
     }
 
@@ -205,6 +208,7 @@ class NetworkDetails extends Component {
       return (
         <div className="widget vbox details-container" ref={this.containerRef}>
           {this._renderMergedSection(entry)}
+          {this._renderFieldTooltip()}
         </div>
       );
     }
@@ -219,6 +223,7 @@ class NetworkDetails extends Component {
           <div className="split-handle"></div>
         </div>
         {this._renderResponseSection(entry, 100 - splitPosition)}
+        {this._renderFieldTooltip()}
       </div>
     );
   }
@@ -345,7 +350,7 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, request, requestId } = entryToRender;
-    const { requestTab, requestCollapsed, editMode, editedData, repeated, editSent, requestCopied } = this.state;
+    const { requestTab, requestCollapsed, editMode, editedData, repeated, editSent, requestCopied, fieldInspectorEnabled } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
 
@@ -473,6 +478,15 @@ class NetworkDetails extends Component {
                 </button>
               </>
             )}
+            {!editMode && protoManager.isReady() && (
+              <button
+                className={`action-button${fieldInspectorEnabled ? ' active' : ''}`}
+                onClick={() => this.setState(s => ({ fieldInspectorEnabled: !s.fieldInspectorEnabled, fieldTooltip: null }))}
+                title="Field Inspector — hover or click fields to see field number, type, wire type"
+              >
+                <span>Inspector</span>
+              </button>
+            )}
             <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
               <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
               <CopyIcon />
@@ -483,9 +497,13 @@ class NetworkDetails extends Component {
             </button>
           </div>
         </div>
-        <div className="section-content">
+        <div
+          className="section-content"
+          onMouseMove={fieldInspectorEnabled && requestTab === 'body' ? (e) => this._onSectionMouseMove(e, 'request') : undefined}
+          onMouseLeave={fieldInspectorEnabled ? this._onSectionMouseLeave : undefined}
+        >
           {requestTab === 'headers' && this._renderRequestHeaders(rawRequest)}
-          {requestTab === 'body' && this._renderRequestBody(method, request, editMode, editedData, requestCollapsed)}
+          {requestTab === 'body' && this._renderRequestBody(method, request, editMode, editedData, requestCollapsed, fieldInspectorEnabled, 'request')}
           {requestTab === 'diff' && this._renderInlineDiff(entry, 'request')}
         </div>
       </div>
@@ -498,7 +516,7 @@ class NetworkDetails extends Component {
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { method, response, responses, streamComplete, error, requestId } = entryToRender;
-    const { responseTab, responseCollapsed, responseCopied } = this.state;
+    const { responseTab, responseCollapsed, responseCopied, fieldInspectorEnabled } = this.state;
 
     const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
 
@@ -583,6 +601,15 @@ class NetworkDetails extends Component {
             </button>
           </div>
           <div className="section-actions">
+            {protoManager.isReady() && (
+              <button
+                className={`action-button${fieldInspectorEnabled ? ' active' : ''}`}
+                onClick={() => this.setState(s => ({ fieldInspectorEnabled: !s.fieldInspectorEnabled, fieldTooltip: null }))}
+                title="Field Inspector — hover or click fields to see field number, type, wire type"
+              >
+                <span>Inspector</span>
+              </button>
+            )}
             <button className={`action-button ${responseCopied ? 'copied' : ''}`} onClick={this._copyResponseToClipboard}>
               <span>{responseCopied ? 'Copied!' : 'Copy'}</span>
               <CopyIcon />
@@ -593,12 +620,16 @@ class NetworkDetails extends Component {
             </button>
           </div>
         </div>
-        <div className="section-content">
+        <div
+          className="section-content"
+          onMouseMove={fieldInspectorEnabled && responseTab === 'body' ? (e) => this._onSectionMouseMove(e, 'response') : undefined}
+          onMouseLeave={fieldInspectorEnabled ? this._onSectionMouseLeave : undefined}
+        >
           {responseTab === 'headers' && this._renderResponseHeaders(rawRequest)}
           {responseTab === 'body' && (
             isStreaming
               ? this._renderStreamingResponses(responses, streamComplete, responseCollapsed)
-              : this._renderResponseBody(response, error, responseCollapsed)
+              : this._renderResponseBody(response, error, responseCollapsed, fieldInspectorEnabled, 'response')
           )}
           {responseTab === 'diff' && this._renderInlineDiff(entry, 'response')}
         </div>
@@ -789,7 +820,7 @@ class NetworkDetails extends Component {
     );
   };
 
-  _renderRequestBody = (method, request, editMode, editedData, collapsed) => {
+  _renderRequestBody = (method, request, editMode, editedData, collapsed, inspectorEnabled, kind) => {
     if (!request) {
       return <div className="no-data">No request body</div>;
     }
@@ -811,6 +842,7 @@ class NetworkDetails extends Component {
         onEdit={editMode ? this._onJsonEdit : false}
         onAdd={editMode ? this._onJsonEdit : false}
         onDelete={editMode ? this._onJsonEdit : false}
+        onSelect={inspectorEnabled ? (s) => this._onFieldSelect(s, kind || 'request') : false}
       />
     );
   };
@@ -850,9 +882,10 @@ class NetworkDetails extends Component {
     );
   };
 
-  _renderResponseBody = (response, error, collapsed) => {
+  _renderResponseBody = (response, error, collapsed, inspectorEnabled, kind) => {
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+
     if (error) {
-      const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
       return (
         <ReactJson
           key={`response-error-${this.props.entry?.entryId}-${collapsed}`}
@@ -864,6 +897,7 @@ class NetworkDetails extends Component {
           displayDataTypes={false}
           displayObjectSize={false}
           src={error}
+          onSelect={inspectorEnabled ? (s) => this._onFieldSelect(s, kind || 'response') : false}
         />
       );
     }
@@ -871,8 +905,6 @@ class NetworkDetails extends Component {
     if (!response) {
       return <div className="no-data">No response body</div>;
     }
-
-    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
 
     return (
       <ReactJson
@@ -885,6 +917,7 @@ class NetworkDetails extends Component {
         displayDataTypes={false}
         displayObjectSize={false}
         src={response}
+        onSelect={inspectorEnabled ? (s) => this._onFieldSelect(s, kind || 'response') : false}
       />
     );
   };
@@ -1960,6 +1993,96 @@ class NetworkDetails extends Component {
       const children = Array.from(node.childNodes);
       children.forEach(child => this._highlightTextNodes(child, regex));
     }
+  };
+
+  // ── Field Inspector ────────────────────────────────────────────────────────
+
+  _getMethodFromEntry = () => {
+    const { entry } = this.props;
+    const cachedEntry = entry?.entryId ? getNetworkEntry(entry.entryId) : null;
+    return cachedEntry?.method || entry?.method || null;
+  };
+
+  _findObjectKeyEl(target, containerEl) {
+    let el = target;
+    while (el && el !== containerEl) {
+      const cls = el.className;
+      if (typeof cls === 'string' && cls.includes('object-key') && !cls.includes('-val')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  _onSectionMouseMove = (e, kind) => {
+    if (!this.state.fieldInspectorEnabled) return;
+    if (this.state.fieldTooltip?.pinned) return;
+
+    const keyEl = this._findObjectKeyEl(e.target, e.currentTarget);
+    if (!keyEl) {
+      if (this.state.fieldTooltip) this.setState({ fieldTooltip: null });
+      return;
+    }
+
+    const fieldName = keyEl.textContent.replace(/"/g, '').trim();
+    if (!fieldName || /^\d+$/.test(fieldName)) {
+      if (this.state.fieldTooltip) this.setState({ fieldTooltip: null });
+      return;
+    }
+
+    if (this.state.fieldTooltip?.name === fieldName) return; // no change
+
+    const method = this._getMethodFromEntry();
+    const info = method ? protoManager.findFieldByName(method, fieldName, kind) : null;
+
+    this.setState({
+      fieldTooltip: { x: e.clientX + 14, y: e.clientY + 14, name: fieldName, info, pinned: false, kind },
+    });
+  };
+
+  _onSectionMouseLeave = () => {
+    if (!this.state.fieldTooltip?.pinned) {
+      this.setState({ fieldTooltip: null });
+    }
+  };
+
+  _onFieldSelect = (select, kind) => {
+    if (!this.state.fieldInspectorEnabled) return;
+    const { name, namespace } = select;
+    const path = (namespace || []).filter(n => n !== 'root' && typeof n === 'string' && isNaN(n));
+    const method = this._getMethodFromEntry();
+    const info = method ? protoManager.getFieldInfo(method, path, kind) : null;
+    this.setState({ fieldTooltip: { x: 0, y: 0, name, info, pinned: true, kind } });
+  };
+
+  _renderFieldTooltip = () => {
+    const { fieldTooltip, fieldInspectorEnabled } = this.state;
+    if (!fieldInspectorEnabled || !fieldTooltip) return null;
+
+    const { x, y, name, info, pinned } = fieldTooltip;
+    const style = pinned
+      ? { position: 'absolute', bottom: 8, right: 8, left: 'auto', top: 'auto' }
+      : { position: 'fixed', left: x, top: y, pointerEvents: 'none' };
+
+    return (
+      <div className={`field-inspector-tooltip${pinned ? ' pinned' : ''}`} style={style}>
+        {pinned && (
+          <button className="fit-close" onClick={() => this.setState({ fieldTooltip: null })}>✕</button>
+        )}
+        <div className="fit-name">{name}</div>
+        {info ? (
+          <table className="fit-table">
+            <tbody>
+              <tr><td>Field #</td><td>{info.number}</td></tr>
+              <tr><td>Type</td><td className="fit-type">{info.protoType}</td></tr>
+              <tr><td>Wire</td><td>{info.wireType.code} <span className="fit-label">({info.wireType.label})</span></td></tr>
+              <tr><td>Rule</td><td>{info.rule}</td></tr>
+            </tbody>
+          </table>
+        ) : (
+          <div className="fit-not-found">Not found in schema</div>
+        )}
+      </div>
+    );
   };
 
   _findOriginalEntry = (entry) => {
