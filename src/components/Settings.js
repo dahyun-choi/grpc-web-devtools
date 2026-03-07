@@ -15,7 +15,6 @@ class Settings extends Component {
     uploading: false,
     uploadError: null,
     uploadSuccess: null,
-    importPathInput: '',
   };
 
   componentDidMount() {
@@ -24,17 +23,7 @@ class Settings extends Component {
 
   updateProtoStatus = () => {
     const status = protoManager.getStatus();
-    this.setState({ protoStatus: status, importPathInput: status.importPath || '' });
-  };
-
-  handleImportPathChange = (e) => {
-    this.setState({ importPathInput: e.target.value });
-  };
-
-  handleImportPathSave = async () => {
-    const path = this.state.importPathInput.trim();
-    await protoManager.setImportPath(path);
-    this.updateProtoStatus();
+    this.setState({ protoStatus: status });
   };
 
   handleProtoUpload = async (e) => {
@@ -90,7 +79,7 @@ class Settings extends Component {
   };
 
   render() {
-    const { protoStatus, uploading, uploadError, uploadSuccess, importPathInput } = this.state;
+    const { protoStatus, uploading, uploadError, uploadSuccess } = this.state;
 
     return (
       <div className="settings-container">
@@ -164,36 +153,10 @@ class Settings extends Component {
 
           <div className="settings-note">
             <strong>Note:</strong> Proto files are cached in browser storage. You only need to upload them once.
+            {protoStatus.importPath && (
+              <span> grpcurl <code>-import-path</code> is auto-detected as <code>{protoStatus.importPath}</code>.</span>
+            )}
           </div>
-        </div>
-
-        <div className="settings-section">
-          <h3>grpcurl Import Path</h3>
-          <p className="settings-description">
-            Set the <code>-import-path</code> value used when generating grpcurl commands (right-click on a request).
-            This is the root directory that contains your proto files.
-          </p>
-          <div className="settings-import-path-row">
-            <input
-              className="settings-import-path-input"
-              type="text"
-              placeholder="/path/to/your/proto-root"
-              value={importPathInput}
-              onChange={this.handleImportPathChange}
-              onKeyDown={(e) => { if (e.key === 'Enter') this.handleImportPathSave(); }}
-            />
-            <button
-              className="settings-upload-button"
-              onClick={this.handleImportPathSave}
-            >
-              Save
-            </button>
-          </div>
-          {protoStatus.importPath && (
-            <div className="settings-success" style={{ marginTop: 6 }}>
-              Saved: {protoStatus.importPath}
-            </div>
-          )}
         </div>
       </div>
     );

@@ -90,10 +90,26 @@ class ProtoManager {
       throw new Error('No .proto files found in the selected directory');
     }
 
+    // Auto-detect import path from the root directory of uploaded files.
+    // With webkitdirectory upload, webkitRelativePath looks like:
+    //   "shucle-proto/api/ridergw/v1/service.proto"
+    // The first path segment ("shucle-proto") is the import root.
+    const firstWithDir = files.find(f => f.webkitRelativePath && f.webkitRelativePath.includes('/'));
+    if (firstWithDir) {
+      const rootDir = firstWithDir.webkitRelativePath.split('/')[0];
+      if (rootDir) {
+        this.importPath = rootDir;
+        console.log('[ProtoManager] Auto-detected import path:', rootDir);
+      }
+    } else {
+      // Individual files uploaded — clear import path
+      this.importPath = '';
+    }
+
     // Build protobuf root
     await this.buildRoot();
 
-    // Save to chrome.storage.local
+    // Save to chrome.storage.local (includes importPath)
     await this.saveToStorage();
 
     return this.protoFiles.size;
@@ -536,6 +552,7 @@ class ProtoManager {
         chrome.storage.local.set(
           {
             [STORAGE_KEY]: filesArray,
+            [STORAGE_KEY_IMPORT_PATH]: this.importPath,
           },
           () => {
             if (chrome.runtime.lastError) {
