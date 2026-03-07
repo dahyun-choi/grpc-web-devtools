@@ -158,6 +158,35 @@ Server-streaming RPCs are tracked in a single row that updates in place as messa
 - Individual messages can be expanded/collapsed independently; the **Collapse/Expand** button in the section header controls all messages at once
 - A **✓ Stream complete** indicator appears when the server signals EOF
 
+### Copy as grpcurl
+
+Right-click any row in the request list to generate a ready-to-run `grpcurl` command.
+
+```bash
+grpcurl \
+  -proto api/ridergw/v1/service.proto \
+  -import-path shucle-proto \
+  -d '{
+  "demand": {
+    "serviceType": "shucle-test10",
+    ...
+  }
+}' \
+  qa.shucle.com:15443 \
+  ridergwv1.RiderGw/CreateDemand
+```
+
+- **Server address** — extracted automatically from the captured request URL (`host:port`)
+- **`-proto`** — the specific proto file for the request's service package is selected automatically:
+  - Package name is extracted from the method path (e.g. `/ridergwv1.RiderGw/CreateDemand` → `ridergwv1`)
+  - The uploaded proto files are searched for a `package ridergwv1;` declaration
+  - `service.proto` in the same directory is preferred (e.g. `api/ridergw/v1/service.proto`)
+  - Falls back to listing all proto files if no match is found
+- **`-import-path`** — set automatically from the root directory name when uploading a proto directory (e.g. uploading the `shucle-proto` folder sets `-import-path shucle-proto`); omitted if no proto files are uploaded
+- **`-plaintext`** — added automatically for `http://` endpoints
+- **`-d`** — populated with the captured request body as formatted JSON
+- The command is shown in a modal with a **Copy to clipboard** button; press `Escape` to close
+
 ### Other Improvements
 
 - **OPTIONS preflight filtering** — preflight requests are hidden from the request list
