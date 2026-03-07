@@ -26,18 +26,31 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatStreamTime(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return `${h}:${m}:${s}.${ms}`;
+}
+
 class StreamResponseItem extends Component {
   state = { collapsed: true };
   _toggle = () => this.setState(s => ({ collapsed: !s.collapsed }));
 
   render() {
-    const { index, response, theme } = this.props;
+    const { index, item, theme } = this.props;
     const { collapsed } = this.state;
+    const response = item.data ?? item;
+    const timeStr = formatStreamTime(item.timestamp);
     return (
       <div className="stream-response-item">
         <div className="stream-response-header" onClick={this._toggle}>
           <span className="stream-response-toggle">{collapsed ? '▶' : '▼'}</span>
           <span className="stream-response-index">Message {index + 1}</span>
+          {timeStr && <span className="stream-response-time">{timeStr}</span>}
         </div>
         {!collapsed && (
           <div className="stream-response-body">
@@ -197,7 +210,7 @@ class NetworkDetails extends Component {
     const merged = {};
     if (request != null) merged.request = editMode && editedData?.request ? editedData.request : request;
     if (error != null) merged.response = error;
-    else if (responses && responses.length > 0) merged.responses = responses;
+    else if (responses && responses.length > 0) merged.responses = responses.map(r => r.data ?? r);
     else if (response != null) merged.response = response;
 
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
@@ -804,8 +817,8 @@ class NetworkDetails extends Component {
     }
     return (
       <div className="stream-responses">
-        {responses.map((response, idx) => (
-          <StreamResponseItem key={idx} index={idx} response={response} theme={theme} />
+        {responses.map((item, idx) => (
+          <StreamResponseItem key={idx} index={idx} item={item} theme={theme} />
         ))}
         {streamComplete && (
           <div className="stream-complete">✓ Stream complete ({responses.length} messages)</div>

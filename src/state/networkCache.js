@@ -26,7 +26,7 @@ function estimatePayloadBytes(entry) {
     bytes += byteLength(safeStringify(entry.response));
   }
   if (entry.responses != null) {
-    entry.responses.forEach(r => { bytes += byteLength(safeStringify(r)); });
+    entry.responses.forEach(r => { bytes += byteLength(safeStringify(r.data ?? r)); });
   }
   if (entry.error != null) {
     bytes += byteLength(safeStringify(entry.error));
@@ -85,7 +85,7 @@ export function addNetworkEntry(entry) {
       if (existingEntry.methodType === 'server_streaming') {
         if (!existingEntry.responses) existingEntry.responses = [];
         if (entry.response !== 'EOF') {
-          existingEntry.responses.push(entry.response);
+          existingEntry.responses.push({ data: entry.response, timestamp: Date.now() });
         } else {
           existingEntry.streamComplete = true;
         }
@@ -132,7 +132,7 @@ export function addNetworkEntry(entry) {
   };
   // For streaming entries, accumulate responses in array instead of single field
   if (entry.methodType === 'server_streaming') {
-    fullEntry.responses = (entry.response && entry.response !== 'EOF') ? [entry.response] : [];
+    fullEntry.responses = (entry.response && entry.response !== 'EOF') ? [{ data: entry.response, timestamp: now }] : [];
     fullEntry.streamComplete = entry.response === 'EOF';
     fullEntry.response = null;
     fullEntry.payloadBytes = estimatePayloadBytes(fullEntry);
