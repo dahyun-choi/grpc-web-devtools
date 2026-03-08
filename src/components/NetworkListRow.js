@@ -38,9 +38,10 @@ class NetworkListRow extends PureComponent {
 
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const { log: logArray, onContextMenu } = data;
+    const { log: logArray, onContextMenu, scenarioEntryIds } = data;
     const log = logArray[index];
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
+    const scenarioIdx = scenarioEntryIds ? scenarioEntryIds.indexOf(log.entryId) : -1;
     return (
       <div
         className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""} ${log.isEditRepeat ? "edit-repeat" : log.isRepeat ? "repeat" : ""} ${log.isGenerated ? "generated" : ""}`}
@@ -52,6 +53,9 @@ class NetworkListRow extends PureComponent {
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {log.endpoint}
+          {scenarioIdx >= 0 && (
+            <span className="scenario-badge" title={`Scenario step ${scenarioIdx + 1}`}>{scenarioIdx + 1}</span>
+          )}
           {log.isEditRepeat
             ? <span className="edit-repeat-icon">✎↩</span>
             : log.isRepeat && <span className="repeat-icon">↩</span>

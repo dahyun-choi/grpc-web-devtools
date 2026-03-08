@@ -6,10 +6,12 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
 import NetworkListRow from './NetworkListRow';
 import LoadTestModal from './LoadTestModal';
+import ScenarioModal from './ScenarioModal';
 import { getNetworkEntry } from '../state/networkCache';
 import protoManager from '../utils/ProtoManager';
 
 import './NetworkList.css';
+import './ScenarioModal.css';
 
 // ── grpcurl command builder ──────────────────────────────────────────────────
 
@@ -70,15 +72,21 @@ class NetworkList extends Component {
       contextMenu: { visible: false, x: 0, y: 0, entryId: null },
       modal: { visible: false, command: '', copied: false },
       loadTest: { visible: false, entryId: null },
+      scenarioEntryIds: [],  // ordered list of entryIds in the scenario
+      scenarioVisible: false,
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
     this.handleSaveAsTest = this.handleSaveAsTest.bind(this);
     this.handleOpenLoadTest = this.handleOpenLoadTest.bind(this);
+    this.handleScenarioToggle = this.handleScenarioToggle.bind(this);
+    this.handleScenarioRemoveStep = this.handleScenarioRemoveStep.bind(this);
+    this.handleScenarioClear = this.handleScenarioClear.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this._cachedLog = null;
+    this._cachedScenarioIds = null;
     this._cachedItemData = null;
   }
 
@@ -94,7 +102,8 @@ class NetworkList extends Component {
 
   handleKeyDown(e) {
     if (e.key === 'Escape') {
-      if (this.state.loadTest.visible) this.setState({ loadTest: { visible: false, entryId: null } });
+      if (this.state.scenarioVisible) this.setState({ scenarioVisible: false });
+      else if (this.state.loadTest.visible) this.setState({ loadTest: { visible: false, entryId: null } });
       else if (this.state.modal.visible) this.closeModal();
       else if (this.state.contextMenu.visible) this.hideContextMenu();
     }
@@ -137,6 +146,26 @@ class NetworkList extends Component {
     });
   }
 
+  handleScenarioToggle(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState(s => {
+      const ids = s.scenarioEntryIds;
+      const newIds = ids.includes(entryId)
+        ? ids.filter(id => id !== entryId)
+        : [...ids, entryId];
+      return { scenarioEntryIds: newIds, contextMenu: { ...s.contextMenu, visible: false } };
+    });
+  }
+
+  handleScenarioRemoveStep(entryId) {
+    this.setState(s => ({ scenarioEntryIds: s.scenarioEntryIds.filter(id => id !== entryId) }));
+  }
+
+  handleScenarioClear() {
+    this.setState({ scenarioEntryIds: [], scenarioVisible: false });
+  }
+
   closeModal() {
     this.setState({ modal: { visible: false, command: '', copied: false } });
   }
@@ -155,16 +184,20 @@ class NetworkList extends Component {
   }
 
   getItemData() {
-    if (this._cachedLog !== this.props.network.log) {
-      this._cachedLog = this.props.network.log;
-      this._cachedItemData = { log: this._cachedLog, onContextMenu: this.handleContextMenu };
+    const { log } = this.props.network;
+    const { scenarioEntryIds } = this.state;
+    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds) {
+      this._cachedLog = log;
+      this._cachedScenarioIds = scenarioEntryIds;
+      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds };
     }
     return this._cachedItemData;
   }
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, loadTest } = this.state;
+    const { contextMenu, modal, loadTest, scenarioEntryIds, scenarioVisible } = this.state;
+    const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
 
     return (
       <div className="widget vbox network-list">
@@ -199,6 +232,28 @@ class NetworkList extends Component {
               </AutoSizer>
             </div>
           </div>
+
+          {/* Scenario bar */}
+          {scenarioEntryIds.length > 0 && (
+            <div className="scenario-bar">
+              <span className="scenario-bar-label">
+                🎬 Scenario · <strong>{scenarioEntryIds.length}</strong> step{scenarioEntryIds.length !== 1 ? 's' : ''}
+              </span>
+              <button
+                className="scenario-bar-btn scenario-bar-play"
+                onClick={() => this.setState({ scenarioVisible: true })}
+              >
+                ▶ Replay
+              </button>
+              <button
+                className="scenario-bar-btn scenario-bar-clear"
+                onClick={this.handleScenarioClear}
+                title="Clear scenario"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Context menu */}
@@ -213,6 +268,9 @@ class NetworkList extends Component {
             </button>
             <button className="grpc-context-menu-item" onClick={this.handleOpenLoadTest}>
               Load Test
+            </button>
+            <button className="grpc-context-menu-item" onClick={this.handleScenarioToggle}>
+              {inScenario ? '🎬 Remove from Scenario' : '🎬 Add to Scenario'}
             </button>
           </div>
         )}
@@ -250,6 +308,17 @@ class NetworkList extends Component {
             entryId={loadTest.entryId}
             log={network.log}
             onClose={() => this.setState({ loadTest: { visible: false, entryId: null } })}
+          />
+        )}
+
+        {/* Scenario modal */}
+        {scenarioVisible && (
+          <ScenarioModal
+            scenarioEntryIds={scenarioEntryIds}
+            log={network.log}
+            onClose={() => this.setState({ scenarioVisible: false })}
+            onRemoveStep={this.handleScenarioRemoveStep}
+            onClearScenario={this.handleScenarioClear}
           />
         )}
 

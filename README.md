@@ -213,6 +213,22 @@ Replay a captured request repeatedly to stress-test an endpoint.
 - Click **■ Stop** to cancel mid-run
 - Each replayed request appears in the list as a repeat entry (yellow ↩)
 
+### Replay Scenario
+
+Record a sequence of gRPC calls and replay them in order with configurable delay and loop count.
+
+- **Right-click** any row → **🎬 Add to Scenario** to add it to the sequence; right-click again → **🎬 Remove from Scenario** to remove it
+- Added entries show a **blue numbered badge** (①②③…) in the request list indicating their position in the sequence
+- Once at least one entry is added, a **Scenario bar** appears at the bottom of the request list showing the step count with **▶ Replay** and **✕ Clear** buttons
+- Click **▶ Replay** to open the Scenario modal:
+  - **Steps** — the ordered list of selected gRPC calls, each showing its method name and current status (⟳ running · ✓ ok · ✗ fail)
+  - **Delay (sec)** — pause between each request (0 = back-to-back)
+  - **Loops** — number of times to run the full sequence (default 1)
+  - Click **▶ Start** to begin sequential execution; each step shows a live status indicator
+  - Click **■ Stop** to cancel mid-run
+  - **Clear** button removes all steps and closes the scenario
+- Each replayed request appears in the main request list as a repeat entry (↩) and can be inspected normally
+
 ### Copy as grpcurl
 
 Right-click any row in the request list to generate a ready-to-run `grpcurl` command.
