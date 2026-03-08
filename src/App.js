@@ -3,6 +3,7 @@ import React, { Component } from 'react';
 import './App.css';
 import MainLayout from './components/MainLayout';
 import Toolbar from './components/Toolbar';
+import RequestGenerator from './components/RequestGenerator';
 
 
 class App extends Component {
@@ -18,6 +19,7 @@ class App extends Component {
                 <div className="widget vbox">
                   <Toolbar />
                   <MainLayout />
+                  <RequestGenerator />
                 </div>
               </div>
             </div>

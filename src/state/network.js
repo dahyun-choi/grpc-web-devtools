@@ -182,6 +182,7 @@ export function buildSummaryEntry(entry) {
     duration: entry.duration,
     statusCode: statusCode,
     isRepeat: !!entry.isRepeat,
+    isGenerated: !!entry.isGenerated,
     streamCount: entry.responses?.length ?? null,
     streamComplete: entry.streamComplete ?? false,
   };

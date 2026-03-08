@@ -1,0 +1,431 @@
+/* ── Overlay & Modal ─────────────────────────────────────────────────────── */
+.rg-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 9999;
+  padding-top: 40px;
+}
+
+.rg-modal {
+  background: var(--network-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 680px;
+  max-width: 96vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.rg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--divider-color);
+  flex-shrink: 0;
+  background: var(--toolbar-bg-color);
+  cursor: move;
+  user-select: none;
+}
+
+.rg-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--toolbar-color);
+}
+
+.rg-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rg-clear-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--toolbar-color);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.rg-clear-btn:hover { opacity: 1; background: var(--network-row-hover); }
+
+.rg-close {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-color);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.6;
+}
+.rg-close:hover { opacity: 1; }
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+.rg-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rg-no-proto {
+  color: var(--toolbar-color);
+  opacity: 0.6;
+  font-size: 12px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────────── */
+.rg-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rg-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--toolbar-color);
+  opacity: 0.6;
+}
+
+/* ── Method selector ─────────────────────────────────────────────────────── */
+.rg-method-wrap {
+  position: relative;
+}
+
+.rg-method-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+}
+.rg-method-input:focus { border-color: #2196F3; }
+
+.rg-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: var(--toolbar-bg-color);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+.rg-dropdown-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--toolbar-color);
+}
+.rg-dropdown-item:hover,
+.rg-dropdown-item.selected { background: var(--network-row-hover); }
+.rg-dropdown-item.highlighted { background: var(--network-row-hover); outline: 1px solid #2196F3; outline-offset: -1px; }
+
+.rg-dp-service { opacity: 0.6; font-family: monospace; }
+.rg-dp-sep { opacity: 0.4; margin: 0 2px; }
+.rg-dp-method { font-family: monospace; font-weight: 500; }
+
+.rg-dropdown-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--toolbar-color);
+  opacity: 0.5;
+}
+
+/* ── URL input ───────────────────────────────────────────────────────────── */
+.rg-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+}
+.rg-url-input:focus { border-color: #2196F3; }
+
+/* ── Headers ─────────────────────────────────────────────────────────────── */
+.rg-headers-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.rg-add-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--toolbar-color);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.rg-add-btn:hover { opacity: 1; background: var(--network-row-hover); }
+.rg-add-btn:disabled { opacity: 0.3; cursor: default; }
+
+.rg-headers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rg-header-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.rg-hkey, .rg-hval {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 11px;
+  font-family: monospace;
+  outline: none;
+}
+.rg-hkey { max-width: 200px; }
+.rg-hkey:focus, .rg-hval:focus { border-color: #2196F3; }
+
+.rg-hdel {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-color);
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.rg-hdel:hover { opacity: 1; }
+
+/* ── Body editor ─────────────────────────────────────────────────────────── */
+.rg-body-editor {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--network-bg);
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+.rg-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.rg-send-btn {
+  padding: 6px 20px;
+  border-radius: 4px;
+  border: none;
+  background: #2196F3;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rg-send-btn:hover:not(:disabled) { background: #1976D2; }
+.rg-send-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Response ────────────────────────────────────────────────────────────── */
+.rg-response-section {
+  border-top: 1px solid var(--divider-color);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rg-response-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rg-response-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.rg-resp-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--toolbar-color);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.rg-resp-btn:hover { opacity: 1; background: var(--network-row-hover); }
+.rg-resp-btn.copied { color: #4caf50; border-color: #4caf50; opacity: 1; }
+
+.rg-resp-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  right: 0;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 200;
+}
+.rg-resp-btn:hover::after { opacity: 1; }
+
+.rg-status {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: monospace;
+}
+.rg-status.ok { color: #0a0; }
+.rg-status.error { color: rgb(216, 0, 0); }
+
+.rg-err-msg {
+  font-weight: 400;
+  opacity: 0.85;
+  font-size: 11px;
+}
+
+.rg-response-body {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--network-bg);
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+/* ── ReactJson color overrides (light mode) ──────────────────────────────── */
+.rg-body-editor .react-json-view,
+.rg-response-body .react-json-view {
+  background: transparent !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rg-body-editor .react-json-view .object-key,
+.rg-response-body .react-json-view .object-key {
+  color: #0969da !important;
+}
+.rg-body-editor .react-json-view .string-value,
+.rg-response-body .react-json-view .string-value {
+  color: #0a3069 !important;
+}
+.rg-body-editor .react-json-view .number-value,
+.rg-body-editor .react-json-view .integer-value,
+.rg-body-editor .react-json-view .float-value,
+.rg-response-body .react-json-view .number-value,
+.rg-response-body .react-json-view .integer-value,
+.rg-response-body .react-json-view .float-value {
+  color: #cf222e !important;
+}
+.rg-body-editor .react-json-view .boolean-value,
+.rg-response-body .react-json-view .boolean-value {
+  color: #8250df !important;
+}
+.rg-body-editor .react-json-view .null-value,
+.rg-response-body .react-json-view .null-value {
+  color: #8250df !important;
+}
+
+/* ── Resize handle ───────────────────────────────────────────────────────── */
+.rg-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  z-index: 10;
+}
+
+.rg-resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--divider-color);
+  border-bottom: 2px solid var(--divider-color);
+  border-radius: 1px;
+  opacity: 0.5;
+}
+.rg-resize-handle:hover::after { opacity: 1; }
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .rg-body-editor .react-json-view .object-key,
+  .rg-response-body .react-json-view .object-key {
+    color: #79c0ff !important;
+  }
+  .rg-body-editor .react-json-view .string-value,
+  .rg-response-body .react-json-view .string-value {
+    color: #a5d6ff !important;
+  }
+  .rg-body-editor .react-json-view .number-value,
+  .rg-body-editor .react-json-view .integer-value,
+  .rg-body-editor .react-json-view .float-value,
+  .rg-response-body .react-json-view .number-value,
+  .rg-response-body .react-json-view .integer-value,
+  .rg-response-body .react-json-view .float-value {
+    color: #ffa657 !important;
+  }
+  .rg-body-editor .react-json-view .boolean-value,
+  .rg-response-body .react-json-view .boolean-value,
+  .rg-body-editor .react-json-view .null-value,
+  .rg-response-body .react-json-view .null-value {
+    color: #d2a8ff !important;
+  }
+}

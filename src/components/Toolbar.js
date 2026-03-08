@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
@@ -32,6 +32,12 @@ class Toolbar extends Component {
            >
              <SettingsIcon />
            </ToolbarButton>
+          <ToolbarButton
+            title="Request Generator — build and send a new gRPC request from proto schema"
+            onClick={() => this.props.setRequestGeneratorOpen(true)}
+          >
+            <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '-0.02em' }}>Gen</span>
+          </ToolbarButton>
         </>
     )
   }
@@ -179,6 +185,7 @@ const mapDispatchToProps = {
   setSettingsOpen,
   setSplitPanel,
   setFieldInspector,
+  setRequestGeneratorOpen,
   applyGlobalSearch
 };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

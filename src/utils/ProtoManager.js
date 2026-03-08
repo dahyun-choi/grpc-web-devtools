@@ -1293,6 +1293,69 @@ class ProtoManager {
     return { code: 2, label: 'length-delimited' };
   }
 
+  // ── Request Generator helpers ─────────────────────────────────────────────
+
+  /** Return flat list of all { fullPath, servicePath, serviceName, methodName } */
+  getAllMethods() {
+    if (!this.root) return [];
+    const methods = [];
+    const traverse = (ns, prefix) => {
+      if (!ns || !ns.nested) return;
+      for (const [name, obj] of Object.entries(ns.nested)) {
+        const path = prefix ? `${prefix}.${name}` : name;
+        if (obj instanceof protobuf.Service) {
+          for (const methodName of Object.keys(obj.methods || {})) {
+            methods.push({ fullPath: `${path}/${methodName}`, servicePath: path, serviceName: name, methodName });
+          }
+        }
+        traverse(obj, path);
+      }
+    };
+    traverse(this.root, '');
+    return methods.sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+  }
+
+  /** Generate an example JSON object for the request type of the given method path */
+  generateExampleForMethod(methodPath) {
+    try {
+      const typeInfo = this.getMessageType(methodPath);
+      if (!typeInfo || !typeInfo.requestType) return {};
+      return this._genExample(typeInfo.requestType, new Set(), 0);
+    } catch (e) {
+      return {};
+    }
+  }
+
+  _genExample(msgType, visited, depth) {
+    if (!msgType || !msgType.fields || depth > 4) return {};
+    const key = msgType.fullName || String(depth);
+    if (visited.has(key)) return {};
+    visited.add(key);
+    const result = {};
+    for (const f of Object.values(msgType.fields)) {
+      try { f.resolve(); } catch (e) { /* ignore */ }
+      const camelName = this.snakeToCamelCase(f.name);
+      let val;
+      if (f.resolvedType) {
+        if (f.resolvedType.values && !f.resolvedType.fields) {
+          val = Object.keys(f.resolvedType.values)[0] ?? 0;
+        } else if (f.resolvedType.fields) {
+          val = this._genExample(f.resolvedType, visited, depth + 1);
+        }
+      } else {
+        switch (f.type) {
+          case 'string': val = ''; break;
+          case 'bool': val = false; break;
+          case 'bytes': val = ''; break;
+          case 'float': case 'double': val = 0; break;
+          default: val = 0;
+        }
+      }
+      if (val !== undefined) result[camelName] = f.rule === 'repeated' ? [] : val;
+    }
+    return result;
+  }
+
   isReady() {
     return this.root !== null && this.protoFiles.size > 0;
   }

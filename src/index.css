@@ -67,6 +67,8 @@ code {
   --network-row-icon-fill: rgba(0, 0, 0, 0.2);
   --network-row-repeat: #fffbea;
   --network-row-repeat-odd: #fff6d6;
+  --network-row-generated: #f5f0ff;
+  --network-row-generated-odd: #ede5ff;
 
 }
 
@@ -89,6 +91,8 @@ code {
     --network-row-icon-fill: rgba(255, 255, 255, 0.8);
     --network-row-repeat: #2a2510;
     --network-row-repeat-odd: #2e2912;
+    --network-row-generated: #1e1530;
+    --network-row-generated-odd: #221838;
   }
 
   input[type=checkbox] {
