@@ -38,5 +38,5 @@
       "all_frames": true
     }
   ],
-  "permissions": ["storage"]
+  "permissions": ["storage", "debugger"]
 }
