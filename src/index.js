@@ -640,6 +640,9 @@ function _onMessageRecived({ action, data }) {
             console.log('[Index] ✓ Duration calculated:', duration, 'ms');
           }
         }
+      } else if (fullEntry.duration == null && data.duration != null) {
+        // For repeat/generated requests: use duration embedded in the postMessage
+        store.dispatch(setEntryDuration({ entryId: fullEntry.entryId, duration: data.duration }));
       } else {
         console.log('[Index] ⚠ No matching raw request found for entryId:', fullEntry.entryId);
       }

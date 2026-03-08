@@ -1360,6 +1360,7 @@ class NetworkDetails extends Component {
   }, '*');
 
   // Send the request
+  const __start = Date.now();
   fetch(url, {
     method: 'POST',
     headers: headers,
@@ -1368,13 +1369,11 @@ class NetworkDetails extends Component {
     mode: 'cors'
   })
   .then(response => {
-    console.log('[Page] Edit & Repeat - Response received, status:', response.status, 'ok:', response.ok);
-
     const responseStatus = response.status;
     const responseOk = response.ok;
 
     return response.arrayBuffer().then(responseBody => {
-      // Convert response body to base64
+      const __duration = Date.now() - __start;
       const responseBytes = new Uint8Array(responseBody);
       let binary = '';
       for (let i = 0; i < responseBytes.byteLength; i++) {
@@ -1382,9 +1381,6 @@ class NetworkDetails extends Component {
       }
       const responseBodyBase64 = btoa(binary);
 
-      console.log('[Page] Edit & Repeat - Posting message with responseBodyBase64, status:', responseStatus);
-
-      // Send response body base64 for panel to decode
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
         method: grpcMethod,
@@ -1394,6 +1390,7 @@ class NetworkDetails extends Component {
         responseBodyBase64: responseBodyBase64,
         responseStatus: responseStatus,
         responseOk: responseOk,
+        duration: __duration,
         isRepeat: true,
         isEditRepeat: true,
       }, "*");
@@ -1401,18 +1398,15 @@ class NetworkDetails extends Component {
   })
   .catch(err => {
     console.error('[Page] Edit & Repeat - Fetch failed:', err);
-
-    // Post error message
+    const __duration = Date.now() - __start;
     window.postMessage({
       type: "__GRPCWEB_DEVTOOLS__",
       method: grpcMethod,
       methodType: "unary",
       requestId: requestId,
       request: requestData,
-      error: {
-        code: 0,
-        message: err.message
-      },
+      error: { code: 0, message: err.message },
+      duration: __duration,
       isRepeat: true,
       isEditRepeat: true,
     }, "*");
@@ -1634,7 +1628,22 @@ class NetworkDetails extends Component {
   // Generate request ID
   const requestId = Math.floor(Math.random() * 1000000);
 
+  // Send raw request data for caching
+  window.postMessage({
+    type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+    requestId: requestId,
+    grpcMethod: grpcMethod,
+    rawRequest: {
+      url: url,
+      method: 'POST',
+      headers: requestHeaders,
+      body: bodyBase64,
+      encoding: 'base64'
+    }
+  }, '*');
+
   // Send the request
+  const __start = Date.now();
   fetch(url, {
     method: 'POST',
     headers: headers,
@@ -1642,73 +1651,37 @@ class NetworkDetails extends Component {
     credentials: 'omit',
     mode: 'cors'
   })
-  .then(response => {
-    // Store in window for panel to access
-    if (!window.__grpcWebDevtoolsRepeatCache) {
-      window.__grpcWebDevtoolsRepeatCache = new Map();
+  .then(response => response.arrayBuffer().then(responseBody => {
+    const __duration = Date.now() - __start;
+    const bytes = new Uint8Array(responseBody);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
     }
-    window.__grpcWebDevtoolsRepeatCache.set(requestId, {
-      url: url,
-      method: 'POST',
-      headers: requestHeaders,
-      body: bodyBase64,
-      encoding: 'base64'
-    });
+    const responseBodyBase64 = btoa(binary);
 
-    // Don't send initial postMessage - wait for response
-    // The response postMessage below will include both request and response
-
-    // Also send raw request data for caching
-    // Use the URL to derive the method name
-    window.postMessage({
-      type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
-      requestId: requestId,
-      grpcMethod: grpcMethod, // Add method for matching
-      rawRequest: {
-        url: url,
-        method: 'POST',
-        headers: requestHeaders,
-        body: bodyBase64,
-        encoding: 'base64'
-      }
-    }, '*');
-
-    return response.arrayBuffer().then(responseBody => {
-      // Convert response body to base64
-      const bytes = new Uint8Array(responseBody);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const responseBodyBase64 = btoa(binary);
-
-      // Update the initial postMessage with response body
-      window.postMessage({
-        type: "__GRPCWEB_DEVTOOLS__",
-        method: grpcMethod,
-        methodType: "unary",
-        requestId: requestId,
-        request: requestData,
-        responseBodyBase64: responseBodyBase64, // Will be decoded by index.js if proto available
-        isRepeat: true,
-      }, "*");
-    });
-  })
-  .catch(err => {
-    console.error('[Page] Fetch failed:', err);
-
-    // Post error message
     window.postMessage({
       type: "__GRPCWEB_DEVTOOLS__",
       method: grpcMethod,
       methodType: "unary",
       requestId: requestId,
       request: requestData,
-      error: {
-        code: 0,
-        message: err.message
-      },
-      isRepeat: true, // Mark as repeat
+      responseBodyBase64: responseBodyBase64,
+      duration: __duration,
+      isRepeat: true,
+    }, "*");
+  }))
+  .catch(err => {
+    const __duration = Date.now() - __start;
+    window.postMessage({
+      type: "__GRPCWEB_DEVTOOLS__",
+      method: grpcMethod,
+      methodType: "unary",
+      requestId: requestId,
+      request: requestData,
+      error: { code: 0, message: err.message },
+      duration: __duration,
+      isRepeat: true,
     }, "*");
   });
 })();

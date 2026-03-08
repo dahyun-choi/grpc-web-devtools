@@ -387,8 +387,10 @@ class RequestGenerator extends Component {
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
+  const __start = Date.now();
   fetch(url, { method: 'POST', headers: headers, body: bytes, credentials: 'omit', mode: 'cors' })
     .then(response => response.arrayBuffer().then(buf => {
+      const __duration = Date.now() - __start;
       const rb = new Uint8Array(buf);
       let bin = '';
       for (let i = 0; i < rb.byteLength; i++) bin += String.fromCharCode(rb[i]);
@@ -399,10 +401,12 @@ class RequestGenerator extends Component {
         requestId: requestId,
         request: requestBody,
         responseBodyBase64: btoa(bin),
+        duration: __duration,
         isGenerated: true,
       }, '*');
     }))
     .catch(err => {
+      const __duration = Date.now() - __start;
       window.postMessage({
         type: '__GRPCWEB_DEVTOOLS__',
         method: grpcMethod,
@@ -410,6 +414,7 @@ class RequestGenerator extends Component {
         requestId: requestId,
         request: requestBody,
         error: { code: -1, message: err.message },
+        duration: __duration,
         isGenerated: true,
       }, '*');
     });
