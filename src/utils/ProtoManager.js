@@ -1216,11 +1216,13 @@ class ProtoManager {
         }
       }
       if (!field) return null;
+      const isEnum = field.resolvedType && field.resolvedType.values && !field.resolvedType.fields;
       return {
         number: field.id,
         protoType: field.type,
-        wireType: this._getWireType(field.type),
+        wireType: isEnum ? { code: 0, label: 'varint' } : this._getWireType(field.type),
         rule: field.rule || 'optional',
+        enumValues: isEnum ? field.resolvedType.values : null,
       };
     } catch (e) {
       return null;
@@ -1261,11 +1263,13 @@ class ProtoManager {
     const field = this._findFieldInType(msgType, fieldName);
     if (field) {
       try { field.resolve(); } catch (e) { /* ignore */ }
+      const isEnum = field.resolvedType && field.resolvedType.values && !field.resolvedType.fields;
       return {
         number: field.id,
         protoType: field.type,
-        wireType: this._getWireType(field.type),
+        wireType: isEnum ? { code: 0, label: 'varint' } : this._getWireType(field.type),
         rule: field.rule || 'optional',
+        enumValues: isEnum ? field.resolvedType.values : null,
       };
     }
 

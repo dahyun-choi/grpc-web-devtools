@@ -2054,14 +2054,31 @@ class NetworkDetails extends Component {
         )}
         <div className="fit-name">{name}</div>
         {info ? (
-          <table className="fit-table">
-            <tbody>
-              <tr><td>Field #</td><td>{info.number}</td></tr>
-              <tr><td>Type</td><td className="fit-type">{info.protoType}</td></tr>
-              <tr><td>Wire</td><td>{info.wireType.code} <span className="fit-label">({info.wireType.label})</span></td></tr>
-              <tr><td>Rule</td><td>{info.rule}</td></tr>
-            </tbody>
-          </table>
+          <>
+            <table className="fit-table">
+              <tbody>
+                <tr><td>Field #</td><td>{info.number}</td></tr>
+                <tr><td>Type</td><td className="fit-type">{info.protoType}</td></tr>
+                <tr><td>Wire</td><td>{info.wireType.code} <span className="fit-label">({info.wireType.label})</span></td></tr>
+                <tr><td>Rule</td><td>{info.rule}</td></tr>
+              </tbody>
+            </table>
+            {info.enumValues && (
+              <div className="fit-enum-values">
+                <div className="fit-enum-label">Values</div>
+                <table className="fit-table fit-enum-table">
+                  <tbody>
+                    {Object.entries(info.enumValues).map(([name, num]) => (
+                      <tr key={name}>
+                        <td className="fit-enum-num">{num}</td>
+                        <td className="fit-enum-name">{name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         ) : (
           <div className="fit-not-found">Not found in schema</div>
         )}
