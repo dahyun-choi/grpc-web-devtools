@@ -46,9 +46,13 @@ class Settings extends Component {
 
       console.log('[Settings] Loaded', count, 'proto files');
       this.updateProtoStatus();
+
+      // Proto hot reload: re-decode all existing entries with the new schema
+      const redecodedCount = window.__GRPCWEB_DEVTOOLS_REDECODE_ALL__?.() ?? 0;
+
       this.setState({
         uploading: false,
-        uploadSuccess: `Successfully loaded ${count} proto file(s)`,
+        uploadSuccess: `Successfully loaded ${count} proto file(s)${redecodedCount > 0 ? ` · Re-decoded ${redecodedCount} existing response(s)` : ''}`,
       });
 
       // Clear success message after 3 seconds

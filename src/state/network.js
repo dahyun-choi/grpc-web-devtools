@@ -137,7 +137,7 @@ const networkSlice = createSlice({
 const { actions, reducer } = networkSlice;
 export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration } = actions;
 
-function buildSummaryEntry(entry) {
+export function buildSummaryEntry(entry) {
   // Extract status code from error
   let statusCode = null;
 

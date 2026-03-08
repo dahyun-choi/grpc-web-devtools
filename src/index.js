@@ -6,10 +6,11 @@ import { Provider } from 'react-redux';
 import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
-import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration } from './state/network';
+import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration, networkLog, buildSummaryEntry } from './state/network';
 import toolbarReducer from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
+import { getAllNetworkEntries } from './state/networkCache';
 import DebuggerCapture from './utils/DebuggerCapture';
 
 var port, tabId
@@ -382,6 +383,25 @@ function decodeGrpcResponseBody(responseBodyBase64, method) {
 
 // Export decode function to window for use in repeat functionality
 window.__GRPCWEB_DEVTOOLS_DECODE_RESPONSE__ = decodeGrpcResponseBody;
+
+// Proto hot reload: re-decode all cached entries with the current proto schema
+function redecodeAllEntries() {
+  if (!protoManager.isReady()) return 0;
+  const entries = getAllNetworkEntries();
+  let count = 0;
+  for (const entry of entries) {
+    if (!entry.responseBodyBase64 || !entry.method) continue;
+    const decoded = decodeGrpcResponseBody(entry.responseBodyBase64, entry.method);
+    if (decoded) {
+      entry.response = decoded;
+      store.dispatch(networkLog(buildSummaryEntry(entry)));
+      count++;
+    }
+  }
+  console.log(`[Index] Proto hot reload: re-decoded ${count} entries`);
+  return count;
+}
+window.__GRPCWEB_DEVTOOLS_REDECODE_ALL__ = redecodeAllEntries;
 
 // Load raw cache from storage on startup
 if (chrome && chrome.storage) {
