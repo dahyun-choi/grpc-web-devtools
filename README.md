@@ -96,7 +96,7 @@ const transport: Transport = ConnectTransportOptions({
 
 Hover over any field key in the request or response JSON viewer to instantly see its protobuf schema metadata.
 
-- Enable with the **🔍 Inspector** toggle button in the section header (appears when proto files are uploaded)
+- Enable with the **Field inspector** checkbox in the toolbar (checked by default when proto files are uploaded)
 - **Hover** over a field key to show a floating tooltip with:
   - **Field #** — protobuf field number
   - **Type** — proto scalar or message type (e.g. `string`, `int32`, `Zone`)
@@ -109,6 +109,8 @@ Hover over any field key in the request or response JSON viewer to instantly see
 ### Proto File Upload & Binary Decoding
 
 Upload your `.proto` files in **Settings** to automatically decode protobuf binary messages into readable JSON. Without proto files, raw base64-encoded binary is displayed as-is.
+
+- **Hot reload** — uploading new proto files immediately re-decodes all previously captured responses in the request list; no need to re-trigger network calls. The Settings panel shows how many existing responses were re-decoded (e.g. `Re-decoded 12 existing response(s)`).
 
 - Supports multiple `.proto` files with cross-package imports
 - Namespace-aware type resolution — correctly handles same-named messages across different packages (e.g. `commonv1.District` vs `webgwv1.District`)
