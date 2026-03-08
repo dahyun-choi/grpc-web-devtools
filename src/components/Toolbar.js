@@ -7,6 +7,7 @@ import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldI
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
+import RequestGeneratorIcon from '../icons/RequestGenerator';
 import Settings from './Settings';
 import './Toolbar.css';
 
@@ -35,9 +36,8 @@ class Toolbar extends Component {
           <ToolbarButton
             title="Request Generator — build and send a new gRPC request from proto schema"
             onClick={() => this.props.setRequestGeneratorOpen(true)}
-            className="gen-btn"
           >
-            <span>Gen</span>
+            <RequestGeneratorIcon />
           </ToolbarButton>
         </>
     )
