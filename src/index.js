@@ -11,7 +11,6 @@ import toolbarReducer from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
 import { getAllNetworkEntries } from './state/networkCache';
-import DebuggerCapture from './utils/DebuggerCapture';
 
 var port, tabId
 
@@ -82,53 +81,7 @@ if (chrome) {
       }
     });
 
-    // Initialize DebuggerCapture for reliable raw request capture
-    console.log('[Index] Initializing DebuggerCapture for tab:', tabId);
 
-    debuggerCapture = new DebuggerCapture(tabId, (requestId, rawData) => {
-      console.log('[DebuggerCapture] Raw request callback:', requestId);
-
-      // Prepare cache entry
-      const cacheEntry = {
-        url: rawData.url,
-        method: rawData.method,
-        headers: Object.keys(rawData.headers || {}).map(key => ({
-          name: key,
-          value: rawData.headers[key]
-        })),
-        body: rawData.body,
-        encoding: rawData.encoding,
-        timestamp: rawData.timestamp // Include timestamp for composite key matching
-      };
-
-      // Add response headers if available
-      if (rawData.responseHeaders) {
-        cacheEntry.responseStatus = rawData.responseStatus;
-        cacheEntry.responseStatusText = rawData.responseStatusText;
-        cacheEntry.responseHeaders = Object.keys(rawData.responseHeaders).map(key => ({
-          name: key,
-          value: rawData.responseHeaders[key]
-        }));
-      }
-
-      // Add to raw cache
-      addToRawCache(requestId, cacheEntry);
-    });
-
-    // Enable debugger capture
-    debuggerCapture.enable().then(() => {
-      console.log('[Index] ✓ DebuggerCapture enabled');
-    }).catch(err => {
-      console.error('[Index] Failed to enable DebuggerCapture:', err);
-      console.log('[Index] Falling back to traditional interceptor method');
-    });
-
-    // Cleanup on unload
-    window.addEventListener('unload', () => {
-      if (debuggerCapture) {
-        debuggerCapture.disable();
-      }
-    });
   } catch (error) {
     console.warn("not running app in chrome extension panel")
   }
@@ -153,8 +106,6 @@ const store = configureStore({
 const rawRequestsCache = new Map();
 const MAX_RAW_CACHE_SIZE = 500;
 
-// DebuggerCapture instance for reliable raw request capture
-let debuggerCapture = null;
 const STORAGE_KEYS = {
   RAW_CACHE: 'grpc_devtools_raw_cache_v1',
   RAW_CACHE_METADATA: 'grpc_devtools_raw_cache_metadata_v1'
