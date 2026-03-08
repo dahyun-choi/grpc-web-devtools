@@ -3,21 +3,30 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen, setPaused } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
 import RequestGeneratorIcon from '../icons/RequestGenerator';
+import PauseIcon from '../icons/Pause';
+import PlayIcon from '../icons/Play';
 import Settings from './Settings';
 import './Toolbar.css';
 
 class Toolbar extends Component {
   _renderButtons() {
-    const { clearLog, toggleFilter, setSettingsOpen, toolbar: { filterIsEnabled, filterIsOpen, settingsOpen }} = this.props;
+    const { clearLog, toggleFilter, setSettingsOpen, toolbar: { filterIsEnabled, filterIsOpen, settingsOpen, paused }} = this.props;
     return (
         <>
           <ToolbarButton title="Clear" onClick={() => clearLog({ force: true })} >
             <ClearIcon />
+          </ToolbarButton>
+          <ToolbarButton
+            title={paused ? 'Resume capture' : 'Pause capture'}
+            onClick={() => this.props.setPaused(!paused)}
+            className={paused ? 'open' : ''}
+          >
+            {paused ? <PlayIcon /> : <PauseIcon />}
           </ToolbarButton>
           <ToolbarButton
             title="Filter"
@@ -187,6 +196,7 @@ const mapDispatchToProps = {
   setSplitPanel,
   setFieldInspector,
   setRequestGeneratorOpen,
+  setPaused,
   applyGlobalSearch
 };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

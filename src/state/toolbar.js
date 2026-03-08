@@ -13,6 +13,7 @@ const toolbarSlice = createSlice({
     splitPanel: true,
     fieldInspector: true,
     requestGeneratorOpen: false,
+    paused: false,
   },
   reducers: {
     toggleFilter(state) {
@@ -39,11 +40,14 @@ const toolbarSlice = createSlice({
     setRequestGeneratorOpen(state, action) {
       state.requestGeneratorOpen = action.payload;
     },
+    setPaused(state, action) {
+      state.paused = action.payload;
+    },
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen } = actions;
+export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen, setPaused } = actions;
 
 export default reducer

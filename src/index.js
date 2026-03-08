@@ -603,6 +603,11 @@ function _onMessageRecived({ action, data }) {
       }
     }
 
+    // Drop entry if capture is paused (unless it's a repeat/generated request)
+    if (store.getState().toolbar.paused && !data.isRepeat && !data.isGenerated) {
+      return;
+    }
+
     console.log('[Index] ========== Before logNetworkEntry ==========');
     console.log('[Index] data.request:', !!data.request);
     console.log('[Index] data.response:', !!data.response);
