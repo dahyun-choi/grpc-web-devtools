@@ -5,6 +5,7 @@ import { connect } from 'react-redux';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
 import NetworkListRow from './NetworkListRow';
+import LoadTestModal from './LoadTestModal';
 import { getNetworkEntry } from '../state/networkCache';
 import protoManager from '../utils/ProtoManager';
 
@@ -68,10 +69,12 @@ class NetworkList extends Component {
     this.state = {
       contextMenu: { visible: false, x: 0, y: 0, entryId: null },
       modal: { visible: false, command: '', copied: false },
+      loadTest: { visible: false, entryId: null },
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
     this.handleSaveAsTest = this.handleSaveAsTest.bind(this);
+    this.handleOpenLoadTest = this.handleOpenLoadTest.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -91,7 +94,8 @@ class NetworkList extends Component {
 
   handleKeyDown(e) {
     if (e.key === 'Escape') {
-      if (this.state.modal.visible) this.closeModal();
+      if (this.state.loadTest.visible) this.setState({ loadTest: { visible: false, entryId: null } });
+      else if (this.state.modal.visible) this.closeModal();
       else if (this.state.contextMenu.visible) this.hideContextMenu();
     }
   }
@@ -124,6 +128,15 @@ class NetworkList extends Component {
     });
   }
 
+  handleOpenLoadTest(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState({
+      contextMenu: { ...this.state.contextMenu, visible: false },
+      loadTest: { visible: true, entryId },
+    });
+  }
+
   closeModal() {
     this.setState({ modal: { visible: false, command: '', copied: false } });
   }
@@ -151,7 +164,7 @@ class NetworkList extends Component {
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal } = this.state;
+    const { contextMenu, modal, loadTest } = this.state;
 
     return (
       <div className="widget vbox network-list">
@@ -198,6 +211,9 @@ class NetworkList extends Component {
             <button className="grpc-context-menu-item" onClick={this.handleSaveAsTest}>
               Copy as grpcurl
             </button>
+            <button className="grpc-context-menu-item" onClick={this.handleOpenLoadTest}>
+              Load Test
+            </button>
           </div>
         )}
 
@@ -226,6 +242,15 @@ class NetworkList extends Component {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Load Test modal */}
+        {loadTest.visible && (
+          <LoadTestModal
+            entryId={loadTest.entryId}
+            log={network.log}
+            onClose={() => this.setState({ loadTest: { visible: false, entryId: null } })}
+          />
         )}
 
       </div>
