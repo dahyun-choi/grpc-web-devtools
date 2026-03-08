@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import React, { Component } from 'react';
+import ReactDOM from 'react-dom';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
 import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen, setPaused } from '../state/toolbar';
@@ -14,6 +15,84 @@ import Settings from './Settings';
 import './Toolbar.css';
 
 class Toolbar extends Component {
+  state = {
+    position: null, // { x, y }
+    size: null,     // { width, height }
+  };
+
+  _modalRef = React.createRef();
+  _dragOffset = { x: 0, y: 0 };
+  _isDragging = false;
+  _isResizing = false;
+  _resizeStart = { x: 0, y: 0, w: 0, h: 0 };
+
+  componentDidMount() {
+    document.addEventListener('mousemove', this._onDragMove);
+    document.addEventListener('mouseup', this._onDragEnd);
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener('mousemove', this._onDragMove);
+    document.removeEventListener('mouseup', this._onDragEnd);
+  }
+
+  _onDragStart = (e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    const modal = this._modalRef.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    this._dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this._isDragging = true;
+    modal.style.userSelect = 'none';
+  };
+
+  _onDragMove = (e) => {
+    if (this._isResizing) {
+      const modal = this._modalRef.current;
+      if (!modal) return;
+      const dx = e.clientX - this._resizeStart.x;
+      const dy = e.clientY - this._resizeStart.y;
+      const w = Math.max(400, this._resizeStart.w + dx);
+      const h = Math.max(280, this._resizeStart.h + dy);
+      this.setState({ size: { width: w, height: h } });
+      return;
+    }
+    if (!this._isDragging) return;
+    const modal = this._modalRef.current;
+    if (!modal) return;
+    const x = Math.max(0, Math.min(e.clientX - this._dragOffset.x, window.innerWidth - modal.offsetWidth));
+    const y = Math.max(0, Math.min(e.clientY - this._dragOffset.y, window.innerHeight - modal.offsetHeight));
+    this.setState({ position: { x, y } });
+  };
+
+  _onDragEnd = () => {
+    if (this._isResizing) {
+      this._isResizing = false;
+      const modal = this._modalRef.current;
+      if (modal) modal.style.userSelect = '';
+      return;
+    }
+    if (!this._isDragging) return;
+    this._isDragging = false;
+    const modal = this._modalRef.current;
+    if (modal) modal.style.userSelect = '';
+  };
+
+  _onResizeStart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const modal = this._modalRef.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    this._resizeStart = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    this._isResizing = true;
+    modal.style.userSelect = 'none';
+    if (!this.state.position) {
+      this.setState({ position: { x: rect.left, y: rect.top } });
+    }
+  };
+
   _renderButtons() {
     const { clearLog, toggleFilter, setSettingsOpen, toolbar: { filterIsEnabled, filterIsOpen, settingsOpen, paused }} = this.props;
     return (
@@ -121,18 +200,40 @@ class Toolbar extends Component {
           </div>
         </div>
         {this._renderFilterToolbar()}
-        {settingsOpen && (
-          <div className="settings-modal-overlay" onClick={() => setSettingsOpen(false)}>
-            <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="settings-modal-header">
-                <h2>Settings</h2>
-                <button className="settings-modal-close" onClick={() => setSettingsOpen(false)}>×</button>
-              </div>
-              <div className="settings-modal-content">
-                <Settings />
-              </div>
-            </div>
-          </div>
+        {settingsOpen && ReactDOM.createPortal(
+          <div className="settings-modal-overlay">
+            {(() => {
+              const { position, size } = this.state;
+              const modalStyle = {};
+              if (position) {
+                modalStyle.position = 'fixed';
+                modalStyle.left = position.x;
+                modalStyle.top = position.y;
+                modalStyle.margin = 0;
+              }
+              if (size) {
+                modalStyle.width = size.width;
+                modalStyle.maxWidth = 'none';
+                if (position) {
+                  modalStyle.height = size.height;
+                  modalStyle.maxHeight = 'none';
+                }
+              }
+              return (
+                <div className="settings-modal" ref={this._modalRef} style={modalStyle} onClick={(e) => e.stopPropagation()}>
+                  <div className="settings-modal-header" onMouseDown={this._onDragStart}>
+                    <h2>Settings</h2>
+                    <button className="settings-modal-close" onClick={() => setSettingsOpen(false)}>×</button>
+                  </div>
+                  <div className="settings-modal-content">
+                    <Settings />
+                  </div>
+                  <div className="settings-resize-handle" onMouseDown={this._onResizeStart} />
+                </div>
+              );
+            })()}
+          </div>,
+          document.body
         )}
       </>
     );

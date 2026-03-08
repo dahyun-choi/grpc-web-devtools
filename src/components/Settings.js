@@ -4,6 +4,52 @@ import React, { Component } from 'react';
 import protoManager from '../utils/ProtoManager';
 import './Settings.css';
 
+// ── File tree ─────────────────────────────────────────────────────────────────
+
+function buildFileTree(files) {
+  const root = {};
+  for (const filePath of files) {
+    const parts = filePath.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node[parts[i]]) node[parts[i]] = {};
+      node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = null;
+  }
+  return root;
+}
+
+function sorted(node) {
+  return Object.entries(node).sort(([ak, av], [bk, bv]) => {
+    if ((av !== null) !== (bv !== null)) return av !== null ? -1 : 1;
+    return ak.localeCompare(bk);
+  });
+}
+
+function FileTreeNode({ name, node }) {
+  if (node === null) {
+    return <div className="pt-file">{name}</div>;
+  }
+  return (
+    <details className="pt-dir" open>
+      <summary className="pt-dir-summary">{name}</summary>
+      <div className="pt-children">
+        {sorted(node).map(([n, c]) => <FileTreeNode key={n} name={n} node={c} />)}
+      </div>
+    </details>
+  );
+}
+
+function FileTree({ files }) {
+  const tree = buildFileTree(files);
+  return (
+    <div className="pt-root">
+      {sorted(tree).map(([name, node]) => <FileTreeNode key={name} name={name} node={node} />)}
+    </div>
+  );
+}
+
 class Settings extends Component {
   state = {
     protoStatus: {
@@ -119,13 +165,9 @@ class Settings extends Component {
 
           {protoStatus.fileCount > 0 && (
             <div className="settings-file-list">
-              <details>
+              <details open>
                 <summary>Loaded files ({protoStatus.fileCount})</summary>
-                <ul>
-                  {protoStatus.files.map((file, idx) => (
-                    <li key={idx}>{file}</li>
-                  ))}
-                </ul>
+                <FileTree files={protoStatus.files} />
               </details>
             </div>
           )}
