@@ -38,7 +38,7 @@ class NetworkListRow extends PureComponent {
 
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const { log: logArray, onContextMenu, scenarioEntryIds } = data;
+    const { log: logArray, onContextMenu, scenarioEntryIds, colWidths = { time: 100, code: 60, duration: 60 } } = data;
     const log = logArray[index];
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     const scenarioIdx = scenarioEntryIds ? scenarioEntryIds.indexOf(log.entryId) : -1;
@@ -49,7 +49,7 @@ class NetworkListRow extends PureComponent {
         onClick={() => selectLogEntry(index)}
         onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(e, log.entryId); }}
       >
-        <span className="time-cell">{this.formatTime(log.timestamp)}</span>
+        <span className="time-cell" style={{ width: colWidths.time - 5 }}>{this.formatTime(log.timestamp)}</span>
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {log.endpoint}
@@ -67,8 +67,8 @@ class NetworkListRow extends PureComponent {
             </span>
           )}
         </span>
-        <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`}>{this.formatStatusCode(log.statusCode)}</span>
-        <span className="duration-cell">{this.formatDuration(log.duration)}</span>
+        <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`} style={{ width: colWidths.code }}>{this.formatStatusCode(log.statusCode)}</span>
+        <span className="duration-cell" style={{ width: colWidths.duration - 4 }}>{this.formatDuration(log.duration)}</span>
       </div >
     );
   }

@@ -38,6 +38,7 @@
   line-height: 18px;
   height: 18px;
   padding: 1px 4px;
+  position: relative;
 }
 
 .data-grid .data .data-row.odd {
@@ -122,15 +123,11 @@
 
 .time-column {
   width: 100px;
-  min-width: 100px;
-  max-width: 100px;
 }
 
 .time-cell {
   display: inline-block;
   width: 95px;
-  min-width: 95px;
-  max-width: 95px;
   margin-right: 5px;
   font-family: monospace;
   font-size: 11px;
@@ -208,16 +205,12 @@
 
 .code-column {
   width: 60px;
-  min-width: 60px;
-  max-width: 60px;
   text-align: center;
 }
 
 .code-cell {
   display: inline-block;
   width: 60px;
-  min-width: 60px;
-  max-width: 60px;
   font-family: monospace;
   font-size: 11px;
   text-align: center;
@@ -238,22 +231,38 @@
 
 .duration-column {
   width: 60px;
-  min-width: 60px;
-  max-width: 60px;
   text-align: right;
 }
 
 .duration-cell {
   display: inline-block;
   width: 55px;
-  min-width: 55px;
-  max-width: 55px;
   font-family: monospace;
   font-size: 11px;
   text-align: right;
   color: var(--toolbar-color);
   opacity: 0.8;
   padding-right: 4px;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.resize-handle.resize-handle-left {
+  left: 0;
+  right: auto;
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: rgba(128, 128, 128, 0.4);
 }
 
 /* ── Context menu ────────────────────────────────────── */

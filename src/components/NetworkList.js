@@ -74,6 +74,7 @@ class NetworkList extends Component {
       loadTest: { visible: false, entryId: null },
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
+      colWidths: { time: 100, code: 60, duration: 60 },
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
@@ -87,6 +88,7 @@ class NetworkList extends Component {
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this._cachedLog = null;
     this._cachedScenarioIds = null;
+    this._cachedColWidths = null;
     this._cachedItemData = null;
   }
 
@@ -166,6 +168,45 @@ class NetworkList extends Component {
     this.setState({ scenarioEntryIds: [], scenarioVisible: false });
   }
 
+  startResize(col, e) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const { colWidths } = this.state;
+    const startWidth = colWidths[col];
+    const startCodeWidth = colWidths.code;
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent) => {
+      const delta = moveEvent.clientX - startX;
+      if (col === 'time') {
+        // 오른쪽 핸들: 드래그 우 → time 커짐, name 줄어듦
+        const newWidth = Math.max(40, startWidth + delta);
+        this.setState(s => ({ colWidths: { ...s.colWidths, time: newWidth } }));
+      } else if (col === 'code') {
+        // 왼쪽 핸들(name-code 경계): 드래그 좌 → code 커짐, name 줄어듦
+        const newWidth = Math.max(40, startWidth - delta);
+        this.setState(s => ({ colWidths: { ...s.colWidths, code: newWidth } }));
+      } else if (col === 'duration') {
+        // 왼쪽 핸들(code-duration 경계): 드래그 좌 → duration 커지고 code 줄어듦
+        const newDuration = Math.max(40, startWidth - delta);
+        const newCode = Math.max(40, startCodeWidth + delta);
+        this.setState(s => ({ colWidths: { ...s.colWidths, code: newCode, duration: newDuration } }));
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
   closeModal() {
     this.setState({ modal: { visible: false, command: '', copied: false } });
   }
@@ -185,18 +226,19 @@ class NetworkList extends Component {
 
   getItemData() {
     const { log } = this.props.network;
-    const { scenarioEntryIds } = this.state;
-    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds) {
+    const { scenarioEntryIds, colWidths } = this.state;
+    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths) {
       this._cachedLog = log;
       this._cachedScenarioIds = scenarioEntryIds;
-      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds };
+      this._cachedColWidths = colWidths;
+      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths };
     }
     return this._cachedItemData;
   }
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, loadTest, scenarioEntryIds, scenarioVisible } = this.state;
+    const { contextMenu, modal, loadTest, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
 
     return (
@@ -207,10 +249,19 @@ class NetworkList extends Component {
               <table className="header">
                 <tbody>
                   <tr>
-                    <th className="time-column"><div>Time</div></th>
+                    <th className="time-column" style={{ width: colWidths.time }}>
+                      <div>Time</div>
+                      <div className="resize-handle" onMouseDown={e => this.startResize('time', e)} />
+                    </th>
                     <th><div>Name</div></th>
-                    <th className="code-column"><div>Code</div></th>
-                    <th className="duration-column"><div>Time</div></th>
+                    <th className="code-column" style={{ width: colWidths.code }}>
+                      <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('code', e)} />
+                      <div>Code</div>
+                    </th>
+                    <th className="duration-column" style={{ width: colWidths.duration }}>
+                      <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('duration', e)} />
+                      <div>Duration</div>
+                    </th>
                   </tr>
                 </tbody>
               </table>
