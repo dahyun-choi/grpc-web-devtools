@@ -229,6 +229,38 @@ Record a sequence of gRPC calls and replay them in order with configurable delay
   - **Clear** button removes all steps and closes the scenario
 - Each replayed request appears in the main request list as a repeat entry (↩) and can be inspected normally
 
+### Pause / Resume Capture
+
+A **pause button** (⏸) in the toolbar lets you temporarily freeze the request list.
+
+- Click ⏸ to pause — new gRPC requests are no longer added to the list
+- Click ▶ to resume — capture resumes from that point
+- Useful when inspecting the current state without new entries pushing your selection out of view
+
+### Resizable Columns
+
+The **Time**, **Code**, and **Duration** column widths can be adjusted by dragging the column borders in the header.
+
+- Drag the right edge of **Time** to widen or narrow it
+- Drag the left edge of **Code** or **Duration** to adjust those columns
+- **Name** column fills the remaining space automatically
+
+### View Schema
+
+**Right-click** any row → **View Schema** to inspect the protobuf message definitions for that gRPC method.
+
+- Displays **Request** and **Response** message types in proto format
+- Syntax-highlighted: keywords (`message`, `enum`, `repeated`), declaration names, scalar types, custom types, field names, numbers, and comments are each colored distinctly
+- **Enum** and **Message** type names appear in a distinct color — hover to see their full definition in a floating tooltip
+- Press `Escape` or click outside to close
+
+### Settings Improvements
+
+- **Proto file tree** — uploaded proto files are shown as a collapsible directory tree (JSON viewer style) instead of a flat list; click a directory to expand or collapse it
+- **Drag to move** — drag the Settings modal header to reposition it anywhere in the panel
+- **Resize** — drag the bottom-right corner handle to resize the modal
+- The modal stays open when clicking outside; close only via the **✕** button
+
 ### Copy as grpcurl
 
 Right-click any row in the request list to generate a ready-to-run `grpcurl` command.

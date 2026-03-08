@@ -63,6 +63,145 @@ function buildGrpcurlCommand(summaryEntry, fullEntry) {
   return args.join(' \\\n  ');
 }
 
+// ── Schema syntax tokenizer ───────────────────────────────────────────────────
+
+const SCALAR_TYPES = new Set([
+  'string','int32','int64','uint32','uint64','sint32','sint64',
+  'fixed32','fixed64','sfixed32','sfixed64','float','double','bool','bytes',
+]);
+
+function tokenizeSchemaLine(text) {
+  if (!text) return [];
+  if (text.startsWith('//')) return [{ text, cls: 'sst-comment' }];
+  if (text === '}') return [{ text: '}', cls: 'sst-punct' }];
+
+  let m = text.match(/^(message|enum) (\w+) (\{)$/);
+  if (m) return [
+    { text: m[1], cls: 'sst-kw' },
+    { text: ' ', cls: '' },
+    { text: m[2], cls: 'sst-decl' },
+    { text: ' ', cls: '' },
+    { text: '{', cls: 'sst-punct' },
+  ];
+
+  // Enum value: "  ENUM_VALUE = 0;"
+  m = text.match(/^(  )([A-Z_][A-Z0-9_]*) = (\d+)(;)$/);
+  if (m) return [
+    { text: '  ', cls: '' },
+    { text: m[2], cls: 'sst-eval' },
+    { text: ' ', cls: '' },
+    { text: '=', cls: 'sst-punct' },
+    { text: ' ', cls: '' },
+    { text: m[3], cls: 'sst-num' },
+    { text: ';', cls: 'sst-punct' },
+  ];
+
+  // Field: "  (repeated )?Type name = N;"
+  m = text.match(/^(  )(repeated )?(\S+) (\w+) = (\d+)(;)$/);
+  if (m) {
+    const tokens = [{ text: '  ', cls: '' }];
+    if (m[2]) tokens.push({ text: 'repeated', cls: 'sst-kw' }, { text: ' ', cls: '' });
+    tokens.push(
+      { text: m[3], cls: SCALAR_TYPES.has(m[3]) ? 'sst-type-scalar' : 'sst-type-ref' },
+      { text: ' ', cls: '' },
+      { text: m[4], cls: 'sst-fname' },
+      { text: ' ', cls: '' },
+      { text: '=', cls: 'sst-punct' },
+      { text: ' ', cls: '' },
+      { text: m[5], cls: 'sst-num' },
+      { text: ';', cls: 'sst-punct' },
+    );
+    return tokens;
+  }
+
+  return [{ text, cls: '' }];
+}
+
+// ── Schema line builder ───────────────────────────────────────────────────────
+// Returns Array<{ text: string, enumDef?: string }>
+// enumDef is set on enum-type field lines; callers can show it as a tooltip.
+
+function buildSchemaLines(method, typeInfo) {
+  if (!typeInfo) {
+    return [{ text: `// No schema found\n// Proto files may not be loaded, or method not matched.\n// Method: ${method}` }];
+  }
+
+  const visited = new Set();
+  const tooltipDefCache = new Map();
+
+  function getEnumDef(enumType) {
+    const key = enumType.fullName || enumType.name;
+    if (!tooltipDefCache.has(key)) {
+      let def = `enum ${enumType.name} {\n`;
+      for (const [name, val] of Object.entries(enumType.values || {})) {
+        def += `  ${name} = ${val};\n`;
+      }
+      def += '}';
+      tooltipDefCache.set(key, def);
+    }
+    return tooltipDefCache.get(key);
+  }
+
+  function getMsgDef(type) {
+    if (!type || !type.fields) return null;
+    const key = type.fullName || type.name;
+    if (!tooltipDefCache.has(key)) {
+      const fields = Object.values(type.fields).sort((a, b) => a.id - b.id);
+      let def = `message ${type.name} {\n`;
+      for (const f of fields) {
+        const rule = f.rule === 'repeated' ? 'repeated ' : '';
+        def += `  ${rule}${f.type} ${f.name} = ${f.id};\n`;
+      }
+      def += '}';
+      tooltipDefCache.set(key, def);
+    }
+    return tooltipDefCache.get(key);
+  }
+
+  function typeToLines(type) {
+    if (!type || !type.fields) return [];
+    const key = type.fullName || type.name;
+    if (visited.has(key)) return [];
+    visited.add(key);
+
+    const fields = Object.values(type.fields).sort((a, b) => a.id - b.id);
+    const lines = [{ text: `message ${type.name} {` }];
+
+    for (const f of fields) {
+      try { f.resolve(); } catch (_) {}
+      const rule = f.rule === 'repeated' ? 'repeated ' : '';
+      const prefix = `  ${rule}`;
+      const suffix = ` ${f.name} = ${f.id};`;
+      if (f.resolvedType && f.resolvedType.values && !f.resolvedType.fields) {
+        lines.push({ prefix, typeName: f.type, suffix, tooltipDef: getEnumDef(f.resolvedType) });
+      } else if (f.resolvedType && f.resolvedType.fields) {
+        lines.push({ prefix, typeName: f.type, suffix, tooltipDef: getMsgDef(f.resolvedType) });
+      } else {
+        lines.push({ text: `${prefix}${f.type}${suffix}` });
+      }
+    }
+
+    lines.push({ text: `}` });
+
+    return lines;
+  }
+
+  let methodPath = method;
+  try {
+    if (method && method.startsWith('http')) methodPath = new URL(method).pathname.slice(1);
+  } catch (_) {}
+
+  return [
+    { text: `// ${methodPath}` },
+    { text: '' },
+    { text: '// Request' },
+    ...typeToLines(typeInfo.requestType),
+    { text: '' },
+    { text: '// Response' },
+    ...typeToLines(typeInfo.responseType),
+  ];
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 class NetworkList extends Component {
@@ -72,6 +211,8 @@ class NetworkList extends Component {
       contextMenu: { visible: false, x: 0, y: 0, entryId: null },
       modal: { visible: false, command: '', copied: false },
       loadTest: { visible: false, entryId: null },
+      schemaModal: { visible: false, schemaLines: [] },
+      schemaTooltip: null,
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
       colWidths: { time: 100, code: 60, duration: 60 },
@@ -80,6 +221,7 @@ class NetworkList extends Component {
     this.hideContextMenu = this.hideContextMenu.bind(this);
     this.handleSaveAsTest = this.handleSaveAsTest.bind(this);
     this.handleOpenLoadTest = this.handleOpenLoadTest.bind(this);
+    this.handleViewSchema = this.handleViewSchema.bind(this);
     this.handleScenarioToggle = this.handleScenarioToggle.bind(this);
     this.handleScenarioRemoveStep = this.handleScenarioRemoveStep.bind(this);
     this.handleScenarioClear = this.handleScenarioClear.bind(this);
@@ -105,6 +247,7 @@ class NetworkList extends Component {
   handleKeyDown(e) {
     if (e.key === 'Escape') {
       if (this.state.scenarioVisible) this.setState({ scenarioVisible: false });
+      else if (this.state.schemaModal.visible) this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null });
       else if (this.state.loadTest.visible) this.setState({ loadTest: { visible: false, entryId: null } });
       else if (this.state.modal.visible) this.closeModal();
       else if (this.state.contextMenu.visible) this.hideContextMenu();
@@ -145,6 +288,24 @@ class NetworkList extends Component {
     this.setState({
       contextMenu: { ...this.state.contextMenu, visible: false },
       loadTest: { visible: true, entryId },
+    });
+  }
+
+  handleViewSchema(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    const summaryEntry = this.props.network.log.find(en => en.entryId === entryId);
+    const method = summaryEntry ? summaryEntry.method : '';
+    let schemaLines;
+    try {
+      const typeInfo = method ? protoManager.getMessageType(method) : null;
+      schemaLines = buildSchemaLines(method, typeInfo);
+    } catch (err) {
+      schemaLines = [{ text: `// Error: ${err.message}` }];
+    }
+    this.setState({
+      contextMenu: { ...this.state.contextMenu, visible: false },
+      schemaModal: { visible: true, schemaLines },
     });
   }
 
@@ -238,7 +399,7 @@ class NetworkList extends Component {
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, loadTest, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
+    const { contextMenu, modal, loadTest, schemaModal, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
 
     return (
@@ -320,6 +481,9 @@ class NetworkList extends Component {
             <button className="grpc-context-menu-item" onClick={this.handleOpenLoadTest}>
               Load Test
             </button>
+            <button className="grpc-context-menu-item" onClick={this.handleViewSchema}>
+              View Schema
+            </button>
             <button className="grpc-context-menu-item" onClick={this.handleScenarioToggle}>
               {inScenario ? '🎬 Remove from Scenario' : '🎬 Add to Scenario'}
             </button>
@@ -350,6 +514,61 @@ class NetworkList extends Component {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Schema modal */}
+        {schemaModal.visible && (
+          <div className="grpcurl-modal-overlay" onClick={() => this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null })}>
+            <div className="grpcurl-modal schema-modal" onClick={e => e.stopPropagation()}>
+              <div className="grpcurl-modal-header">
+                <span className="grpcurl-modal-title">View Schema</span>
+                <button className="grpcurl-modal-close" onClick={() => this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null })}>✕</button>
+              </div>
+              <pre className="schema-content">
+                {schemaModal.schemaLines.map((line, i) => {
+                  if (line.tooltipDef) {
+                    const isRepeated = line.prefix.includes('repeated');
+                    const sm = line.suffix.match(/^( )(\w+)( )(=)( )(\d+)(;)$/);
+                    return (
+                      <span key={i}>
+                        {'  '}
+                        {isRepeated && <><span className="sst-kw">repeated</span>{' '}</>}
+                        <span
+                          className="sst-type-ref schema-tooltip-field"
+                          onMouseEnter={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
+                          onMouseMove={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
+                          onMouseLeave={() => this.setState({ schemaTooltip: null })}
+                        >{line.typeName}</span>
+                        {sm ? <>
+                          {' '}<span className="sst-fname">{sm[2]}</span>{' '}
+                          <span className="sst-punct">=</span>{' '}
+                          <span className="sst-num">{sm[6]}</span><span className="sst-punct">;</span>
+                        </> : line.suffix}
+                        {'\n'}
+                      </span>
+                    );
+                  }
+                  const tokens = tokenizeSchemaLine(line.text || '');
+                  if (!tokens.length) return '\n';
+                  return (
+                    <span key={i}>
+                      {tokens.map((tok, j) =>
+                        tok.cls ? <span key={j} className={tok.cls}>{tok.text}</span> : tok.text
+                      )}
+                      {'\n'}
+                    </span>
+                  );
+                })}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        {/* Schema enum tooltip */}
+        {schemaTooltip && (
+          <div className="schema-enum-tooltip" style={{ top: schemaTooltip.y, left: schemaTooltip.x }}>
+            <pre>{schemaTooltip.text}</pre>
           </div>
         )}
 

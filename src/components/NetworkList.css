@@ -392,3 +392,57 @@
   color: #fff;
 }
 
+.schema-modal {
+  max-width: 560px;
+}
+
+.schema-content {
+  flex: 1;
+  margin: 0;
+  padding: 12px 14px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--toolbar-color);
+  background: var(--network-bg);
+  overflow: auto;
+  white-space: pre;
+}
+
+/* ── Schema syntax highlight ─────────────────────────────────────── */
+.sst-kw          { color: #c792ea; }
+.sst-decl        { color: #ffcb6b; }
+.sst-type-scalar { color: #82aaff; }
+.sst-type-ref    { color: #89ddff; }
+.sst-fname       { color: #eeffff; }
+.sst-eval        { color: #c3e88d; }
+.sst-num         { color: #f78c6c; }
+.sst-punct       { color: #89ddff; opacity: 0.5; }
+.sst-comment     { color: #607b8b; font-style: italic; }
+
+.schema-tooltip-field {
+  cursor: help;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+
+.schema-tooltip-field:hover {
+  background: rgba(137, 221, 255, 0.15);
+}
+
+.schema-enum-tooltip {
+  position: fixed;
+  z-index: 99999;
+  background: var(--toolbar-bg-color);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--toolbar-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  white-space: pre;
+}
+
