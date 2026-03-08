@@ -8,6 +8,7 @@ import NetworkListRow from './NetworkListRow';
 import LoadTestModal from './LoadTestModal';
 import ScenarioModal from './ScenarioModal';
 import { getNetworkEntry } from '../state/networkCache';
+import { selectLogEntry, setPendingAction } from '../state/network';
 import protoManager from '../utils/ProtoManager';
 
 import './NetworkList.css';
@@ -222,6 +223,8 @@ class NetworkList extends Component {
     this.handleSaveAsTest = this.handleSaveAsTest.bind(this);
     this.handleOpenLoadTest = this.handleOpenLoadTest.bind(this);
     this.handleViewSchema = this.handleViewSchema.bind(this);
+    this.handleRepeat = this.handleRepeat.bind(this);
+    this.handleEditRepeat = this.handleEditRepeat.bind(this);
     this.handleScenarioToggle = this.handleScenarioToggle.bind(this);
     this.handleScenarioRemoveStep = this.handleScenarioRemoveStep.bind(this);
     this.handleScenarioClear = this.handleScenarioClear.bind(this);
@@ -307,6 +310,26 @@ class NetworkList extends Component {
       contextMenu: { ...this.state.contextMenu, visible: false },
       schemaModal: { visible: true, schemaLines },
     });
+  }
+
+  handleRepeat(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    const index = this.props.network.log.findIndex(en => en.entryId === entryId);
+    if (index < 0) return;
+    this.props.selectLogEntry(index);
+    this.props.setPendingAction({ type: 'repeat', entryId });
+    this.setState({ contextMenu: { ...this.state.contextMenu, visible: false } });
+  }
+
+  handleEditRepeat(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    const index = this.props.network.log.findIndex(en => en.entryId === entryId);
+    if (index < 0) return;
+    this.props.selectLogEntry(index);
+    this.props.setPendingAction({ type: 'edit', entryId });
+    this.setState({ contextMenu: { ...this.state.contextMenu, visible: false } });
   }
 
   handleScenarioToggle(e) {
@@ -475,6 +498,13 @@ class NetworkList extends Component {
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={e => e.stopPropagation()}
           >
+            <button className="grpc-context-menu-item" onClick={this.handleRepeat}>
+              Repeat
+            </button>
+            <button className="grpc-context-menu-item" onClick={this.handleEditRepeat}>
+              Edit &amp; Repeat
+            </button>
+            <div className="grpc-context-menu-divider" />
             <button className="grpc-context-menu-item" onClick={this.handleSaveAsTest}>
               Copy as grpcurl
             </button>
@@ -597,5 +627,6 @@ class NetworkList extends Component {
   }
 }
 
-const mapStateToProps = state => ({ network: state.network })
-export default connect(mapStateToProps)(NetworkList)
+const mapStateToProps = state => ({ network: state.network });
+const mapDispatchToProps = { selectLogEntry, setPendingAction };
+export default connect(mapStateToProps, mapDispatchToProps)(NetworkList);

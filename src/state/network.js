@@ -26,6 +26,7 @@ const networkSlice = createSlice({
     _logBak: [],
     _globalSearchValue: '',
     _logBakBeforeGlobalSearch: [],
+    pendingAction: null, // { type: 'repeat' | 'edit', entryId }
   },
   reducers: {
     networkLog(state, action) {
@@ -86,6 +87,12 @@ const networkSlice = createSlice({
       const { payload } = action;
       state.log = payload;
     },
+    setPendingAction(state, action) {
+      state.pendingAction = action.payload;
+    },
+    clearPendingAction(state) {
+      state.pendingAction = null;
+    },
     setEntryDuration(state, action) {
       const { entryId, duration } = action.payload;
       const entry = state.log.find(e => e.entryId === entryId);
@@ -135,7 +142,7 @@ const networkSlice = createSlice({
 });
 
 const { actions, reducer } = networkSlice;
-export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration } = actions;
+export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration, setPendingAction, clearPendingAction } = actions;
 
 export function buildSummaryEntry(entry) {
   // Extract status code from error

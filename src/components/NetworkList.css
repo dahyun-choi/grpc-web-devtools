@@ -295,6 +295,12 @@
   background: var(--network-row-hover);
 }
 
+.grpc-context-menu-divider {
+  height: 1px;
+  background: var(--divider-color);
+  margin: 4px 4px;
+}
+
 /* ── grpcurl modal ───────────────────────────────────── */
 .grpcurl-modal-overlay {
   position: fixed;

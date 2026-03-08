@@ -7,6 +7,7 @@ import ReactJson from "react-json-view";
 import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
 import { setSettingsOpen } from "../state/toolbar";
+import { clearPendingAction } from "../state/network";
 import MinusIcon from "../icons/Minus";
 import PlusIcon from "../icons/Plus";
 import CopyIcon from "../icons/Copy";
@@ -163,6 +164,15 @@ class NetworkDetails extends Component {
         showDiff: !!isRepeat,
         fieldTooltip: null,
       });
+    }
+
+    const { pendingAction } = this.props;
+    if (pendingAction && pendingAction !== prevProps.pendingAction) {
+      if (this.props.entry?.entryId === pendingAction.entryId) {
+        this.props.clearPendingAction();
+        if (pendingAction.type === 'repeat') this._repeatRequest();
+        else if (pendingAction.type === 'edit') this._startEdit();
+      }
     }
 
     // 검색어가 변경되거나 전역 검색어가 변경되거나 entry가 변경되면 하이라이트 업데이트
@@ -2131,8 +2141,10 @@ const mapStateToProps = (state) => ({
   splitPanel: state.toolbar.splitPanel,
   fieldInspector: state.toolbar.fieldInspector,
   log: state.network.log,
+  pendingAction: state.network.pendingAction,
 });
 const mapDispatchToProps = {
   openSettings: () => setSettingsOpen(true),
+  clearPendingAction,
 };
 export default connect(mapStateToProps, mapDispatchToProps)(NetworkDetails);
