@@ -123,7 +123,7 @@ Replay any captured gRPC request with a single click using the **Repeat** button
 
 - Uses the `chrome.debugger` API to reliably capture the original raw request body
 - The replayed response is decoded with proto files if available
-- Repeat requests are visually distinguished with a **↩ icon** (gold) and **yellow background** in the request list
+- Repeat requests are visually distinguished with a **↩ icon** and **yellow background** in the request list
 - If no proto files are uploaded, clicking Repeat opens the Settings panel automatically
 
 ### Edit & Repeat
@@ -138,6 +138,7 @@ Modify request parameters and resend with the **Edit & Repeat** button.
 - Response is decoded and displayed alongside the gRPC status code
 - After sending, **Sent!!!** feedback appears on the Edit & Repeat button
 - If no proto files are uploaded, clicking Edit & Repeat opens the Settings panel automatically
+- Edit & Repeat requests are visually distinguished from plain Repeat with a **✎↩ icon** and **orange background**
 
 ### Request/Response Diff
 
@@ -183,6 +184,34 @@ Server-streaming RPCs are tracked in a single row that updates in place as messa
 - The response panel shows an **accordion list** of all received messages (`Message 1`, `Message 2`, …), each with a per-message timestamp
 - Individual messages can be expanded/collapsed independently; the **Collapse/Expand** button in the section header controls all messages at once
 - A **✓ Stream complete** indicator appears when the server signals EOF
+
+### Request Generator
+
+Build and send a brand-new gRPC request directly from the DevTools panel without re-triggering it from the page.
+
+- Click the **Gen** button in the toolbar to open the Request Generator modal
+- **Method selector** — searches all methods from the uploaded proto files, filtered to packages already seen on the current page (e.g. if the page uses `ridergwv1.*`, only those methods are shown); use arrow keys + Enter for keyboard navigation
+- **URL** — auto-populated from the most recent matching captured request
+- **Headers** — auto-populated from the captured request (filtered to safe headers only: `content-type`, `authorization`, `x-*`, etc.)
+- **Request body** — pre-filled with an auto-generated example from the proto schema; edit inline via the JSON editor; **Reset** button restores the example
+- Click **Send →** to execute the request in the page context; the response appears below with status code, and also in the request list
+- Generated requests are shown with a **✦ icon** and **purple background** in the list
+- **Copy** and **Expand/Collapse** buttons on the response section; collapse state is synced with the button
+- Modal is **draggable** (drag the header) and **resizable** (bottom-right handle)
+- State is preserved when the modal is closed; **Clear** button resets all fields
+- Requires proto files to be uploaded in Settings
+
+### Load Test
+
+Replay a captured request repeatedly to stress-test an endpoint.
+
+- **Right-click** any row in the request list → **Load Test**
+- Configure:
+  - **Requests** — total number of requests to send (1–1000)
+  - **Interval** — delay between each request in seconds (0 = fire as fast as possible)
+- Click **Start** to begin; a progress bar shows `fired / total` along with `ok` and `fail` counts
+- Click **■ Stop** to cancel mid-run
+- Each replayed request appears in the list as a repeat entry (yellow ↩)
 
 ### Copy as grpcurl
 
