@@ -35,8 +35,9 @@ class Toolbar extends Component {
           <ToolbarButton
             title="Request Generator — build and send a new gRPC request from proto schema"
             onClick={() => this.props.setRequestGeneratorOpen(true)}
+            className="gen-btn"
           >
-            <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '-0.02em' }}>Gen</span>
+            <span>Gen</span>
           </ToolbarButton>
         </>
     )
