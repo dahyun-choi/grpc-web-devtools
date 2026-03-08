@@ -153,6 +153,24 @@
   color: #D69C29;
 }
 
+.data-grid .data .data-row.edit-repeat {
+  background-color: var(--network-row-edit-repeat);
+}
+
+.data-grid .data .data-row.edit-repeat.odd {
+  background-color: var(--network-row-edit-repeat-odd);
+}
+
+.data-grid .data .data-row.edit-repeat.selected {
+  background-color: var(--selection-bg-color);
+}
+
+.edit-repeat-icon {
+  margin-left: 5px;
+  font-size: 11px;
+  color: #e65100;
+}
+
 .data-grid .data .data-row.generated {
   background-color: var(--network-row-generated);
 }

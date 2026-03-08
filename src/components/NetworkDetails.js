@@ -1395,6 +1395,7 @@ class NetworkDetails extends Component {
         responseStatus: responseStatus,
         responseOk: responseOk,
         isRepeat: true,
+        isEditRepeat: true,
       }, "*");
     });
   })
@@ -1413,6 +1414,7 @@ class NetworkDetails extends Component {
         message: err.message
       },
       isRepeat: true,
+      isEditRepeat: true,
     }, "*");
   });
 })();

@@ -43,7 +43,7 @@ class NetworkListRow extends PureComponent {
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     return (
       <div
-        className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""} ${log.isRepeat ? "repeat" : ""} ${log.isGenerated ? "generated" : ""}`}
+        className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${hasError ? "error" : ""} ${log.isEditRepeat ? "edit-repeat" : log.isRepeat ? "repeat" : ""} ${log.isGenerated ? "generated" : ""}`}
         style={style}
         onClick={() => selectLogEntry(index)}
         onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(e, log.entryId); }}
@@ -52,7 +52,10 @@ class NetworkListRow extends PureComponent {
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {log.endpoint}
-          {log.isRepeat && <span className="repeat-icon">↩</span>}
+          {log.isEditRepeat
+            ? <span className="edit-repeat-icon">✎↩</span>
+            : log.isRepeat && <span className="repeat-icon">↩</span>
+          }
           {log.isGenerated && <span className="generated-icon">✦</span>}
           {log.streamCount > 0 && (
             <span className="stream-count-badge" title={`${log.streamCount} streaming messages${log.streamComplete ? ' (complete)' : ' (streaming...)'}`}>
