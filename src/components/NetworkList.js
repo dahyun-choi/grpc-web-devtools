@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import React, { Component } from 'react';
+import ReactDOM from 'react-dom';
 import { connect } from 'react-redux';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
@@ -206,11 +207,85 @@ function buildSchemaLines(method, typeInfo) {
 // ── Component ────────────────────────────────────────────────────────────────
 
 class NetworkList extends Component {
+  _grpcurlModalRef = React.createRef();
+  _schemaModalRef = React.createRef();
+  _mdActiveRef = null;
+  _mdActivePosKey = null;
+  _mdActiveSizeKey = null;
+  _mdDragOffset = { x: 0, y: 0 };
+  _mdIsDragging = false;
+  _mdIsResizing = false;
+  _mdResizeData = { x: 0, y: 0, w: 0, h: 0 };
+
+  _mdDragStart = (ref, posKey, e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    const modal = ref.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    this._mdActiveRef = ref;
+    this._mdActivePosKey = posKey;
+    this._mdDragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this._mdIsDragging = true;
+    modal.style.userSelect = 'none';
+  };
+
+  _mdResizeStart = (ref, posKey, sizeKey, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const modal = ref.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    this._mdActiveRef = ref;
+    this._mdActivePosKey = posKey;
+    this._mdActiveSizeKey = sizeKey;
+    this._mdResizeData = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    this._mdIsResizing = true;
+    modal.style.userSelect = 'none';
+    if (!this.state[posKey]) {
+      this.setState({ [posKey]: { x: rect.left, y: rect.top } });
+    }
+  };
+
+  _mdMove = (e) => {
+    if (this._mdIsResizing) {
+      const modal = this._mdActiveRef?.current;
+      if (!modal) return;
+      const dx = e.clientX - this._mdResizeData.x;
+      const dy = e.clientY - this._mdResizeData.y;
+      this.setState({
+        [this._mdActiveSizeKey]: {
+          width: Math.max(380, this._mdResizeData.w + dx),
+          height: Math.max(200, this._mdResizeData.h + dy),
+        },
+      });
+      return;
+    }
+    if (!this._mdIsDragging) return;
+    const modal = this._mdActiveRef?.current;
+    if (!modal) return;
+    const x = Math.max(0, Math.min(e.clientX - this._mdDragOffset.x, window.innerWidth - modal.offsetWidth));
+    const y = Math.max(0, Math.min(e.clientY - this._mdDragOffset.y, window.innerHeight - modal.offsetHeight));
+    this.setState({ [this._mdActivePosKey]: { x, y } });
+  };
+
+  _mdEnd = () => {
+    const modal = this._mdActiveRef?.current;
+    if (modal) modal.style.userSelect = '';
+    this._mdIsDragging = false;
+    this._mdIsResizing = false;
+    this._mdActiveRef = null;
+    this._mdActivePosKey = null;
+    this._mdActiveSizeKey = null;
+  };
+
   constructor(props) {
     super(props);
     this.state = {
       contextMenu: { visible: false, x: 0, y: 0, entryId: null },
       modal: { visible: false, command: '', copied: false },
+      grpcurlPos: null, grpcurlSize: null,
+      schemaPos: null, schemaSize: null,
       loadTest: { visible: false, entryId: null },
       schemaModal: { visible: false, schemaLines: [] },
       schemaTooltip: null,
@@ -240,11 +315,15 @@ class NetworkList extends Component {
   componentDidMount() {
     document.addEventListener('click', this.hideContextMenu);
     document.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('mousemove', this._mdMove);
+    document.addEventListener('mouseup', this._mdEnd);
   }
 
   componentWillUnmount() {
     document.removeEventListener('click', this.hideContextMenu);
     document.removeEventListener('keydown', this.handleKeyDown);
+    document.removeEventListener('mousemove', this._mdMove);
+    document.removeEventListener('mouseup', this._mdEnd);
   }
 
   handleKeyDown(e) {
@@ -422,7 +501,15 @@ class NetworkList extends Component {
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, loadTest, schemaModal, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
+    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
+
+    const grpcurlStyle = {};
+    if (grpcurlPos) { grpcurlStyle.position = 'fixed'; grpcurlStyle.left = grpcurlPos.x; grpcurlStyle.top = grpcurlPos.y; grpcurlStyle.margin = 0; }
+    if (grpcurlSize) { grpcurlStyle.width = grpcurlSize.width; grpcurlStyle.maxWidth = 'none'; grpcurlStyle.height = grpcurlSize.height; grpcurlStyle.maxHeight = 'none'; }
+
+    const schemaStyle = {};
+    if (schemaPos) { schemaStyle.position = 'fixed'; schemaStyle.left = schemaPos.x; schemaStyle.top = schemaPos.y; schemaStyle.margin = 0; }
+    if (schemaSize) { schemaStyle.width = schemaSize.width; schemaStyle.maxWidth = 'none'; schemaStyle.height = schemaSize.height; schemaStyle.maxHeight = 'none'; }
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
 
     return (
@@ -491,136 +578,140 @@ class NetworkList extends Component {
           )}
         </div>
 
-        {/* Context menu */}
-        {contextMenu.visible && (
-          <div
-            className="grpc-context-menu"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button className="grpc-context-menu-item" onClick={this.handleRepeat}>
-              Repeat
-            </button>
-            <button className="grpc-context-menu-item" onClick={this.handleEditRepeat}>
-              Edit &amp; Repeat
-            </button>
-            <div className="grpc-context-menu-divider" />
-            <button className="grpc-context-menu-item" onClick={this.handleSaveAsTest}>
-              Copy as grpcurl
-            </button>
-            <button className="grpc-context-menu-item" onClick={this.handleOpenLoadTest}>
-              Load Test
-            </button>
-            <button className="grpc-context-menu-item" onClick={this.handleViewSchema}>
-              View Schema
-            </button>
-            <button className="grpc-context-menu-item" onClick={this.handleScenarioToggle}>
-              {inScenario ? '🎬 Remove from Scenario' : '🎬 Add to Scenario'}
-            </button>
-          </div>
-        )}
+        {ReactDOM.createPortal(<>
+          {/* Context menu */}
+          {contextMenu.visible && (
+            <div
+              className="grpc-context-menu"
+              style={{ top: contextMenu.y, left: contextMenu.x }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button className="grpc-context-menu-item" onClick={this.handleRepeat}>
+                Repeat
+              </button>
+              <button className="grpc-context-menu-item" onClick={this.handleEditRepeat}>
+                Edit &amp; Repeat
+              </button>
+              <div className="grpc-context-menu-divider" />
+              <button className="grpc-context-menu-item" onClick={this.handleSaveAsTest}>
+                Copy as grpcurl
+              </button>
+              <button className="grpc-context-menu-item" onClick={this.handleOpenLoadTest}>
+                Load Test
+              </button>
+              <button className="grpc-context-menu-item" onClick={this.handleViewSchema}>
+                View Schema
+              </button>
+              <button className="grpc-context-menu-item" onClick={this.handleScenarioToggle}>
+                {inScenario ? '🎬 Remove from Scenario' : '🎬 Add to Scenario'}
+              </button>
+            </div>
+          )}
 
-        {/* grpcurl command modal */}
-        {modal.visible && (
-          <div className="grpcurl-modal-overlay" onClick={this.closeModal}>
-            <div className="grpcurl-modal" onClick={e => e.stopPropagation()}>
-              <div className="grpcurl-modal-header">
-                <span className="grpcurl-modal-title">Copy as grpcurl</span>
-                <button className="grpcurl-modal-close" onClick={this.closeModal}>✕</button>
-              </div>
-              <textarea
-                className="grpcurl-command-text"
-                readOnly
-                value={modal.command}
-                onClick={e => e.target.select()}
-                spellCheck={false}
-              />
-              <div className="grpcurl-modal-footer">
-                <button
-                  className={`grpcurl-copy-button${modal.copied ? ' copied' : ''}`}
-                  onClick={this.copyCommand}
-                >
-                  {modal.copied ? '✓ Copied!' : 'Copy to clipboard'}
-                </button>
+          {/* grpcurl command modal */}
+          {modal.visible && (
+            <div className="grpcurl-modal-overlay" style={{ pointerEvents: 'none' }}>
+              <div className="grpcurl-modal" ref={this._grpcurlModalRef} style={{ ...grpcurlStyle, pointerEvents: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="grpcurl-modal-header" style={{ cursor: 'move' }} onMouseDown={e => this._mdDragStart(this._grpcurlModalRef, 'grpcurlPos', e)}>
+                  <span className="grpcurl-modal-title">Copy as grpcurl</span>
+                  <button className="grpcurl-modal-close" onClick={this.closeModal}>✕</button>
+                </div>
+                <textarea
+                  className="grpcurl-command-text"
+                  readOnly
+                  value={modal.command}
+                  onClick={e => e.target.select()}
+                  spellCheck={false}
+                />
+                <div className="grpcurl-modal-footer">
+                  <button
+                    className={`grpcurl-copy-button${modal.copied ? ' copied' : ''}`}
+                    onClick={this.copyCommand}
+                  >
+                    {modal.copied ? '✓ Copied!' : 'Copy to clipboard'}
+                  </button>
+                </div>
+                <div className="grpcurl-resize-handle" onMouseDown={e => this._mdResizeStart(this._grpcurlModalRef, 'grpcurlPos', 'grpcurlSize', e)} />
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Schema modal */}
-        {schemaModal.visible && (
-          <div className="grpcurl-modal-overlay" onClick={() => this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null })}>
-            <div className="grpcurl-modal schema-modal" onClick={e => e.stopPropagation()}>
-              <div className="grpcurl-modal-header">
-                <span className="grpcurl-modal-title">View Schema</span>
-                <button className="grpcurl-modal-close" onClick={() => this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null })}>✕</button>
-              </div>
-              <pre className="schema-content">
-                {schemaModal.schemaLines.map((line, i) => {
-                  if (line.tooltipDef) {
-                    const isRepeated = line.prefix.includes('repeated');
-                    const sm = line.suffix.match(/^( )(\w+)( )(=)( )(\d+)(;)$/);
+          {/* Schema modal */}
+          {schemaModal.visible && (
+            <div className="grpcurl-modal-overlay" style={{ pointerEvents: 'none' }}>
+              <div className="grpcurl-modal schema-modal" ref={this._schemaModalRef} style={{ ...schemaStyle, pointerEvents: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="grpcurl-modal-header" style={{ cursor: 'move' }} onMouseDown={e => this._mdDragStart(this._schemaModalRef, 'schemaPos', e)}>
+                  <span className="grpcurl-modal-title">View Schema</span>
+                  <button className="grpcurl-modal-close" onClick={() => this.setState({ schemaModal: { visible: false, schemaLines: [] }, schemaTooltip: null })}>✕</button>
+                </div>
+                <pre className="schema-content">
+                  {schemaModal.schemaLines.map((line, i) => {
+                    if (line.tooltipDef) {
+                      const isRepeated = line.prefix.includes('repeated');
+                      const sm = line.suffix.match(/^( )(\w+)( )(=)( )(\d+)(;)$/);
+                      return (
+                        <span key={i}>
+                          {'  '}
+                          {isRepeated && <><span className="sst-kw">repeated</span>{' '}</>}
+                          <span
+                            className="sst-type-ref schema-tooltip-field"
+                            onMouseEnter={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
+                            onMouseMove={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
+                            onMouseLeave={() => this.setState({ schemaTooltip: null })}
+                          >{line.typeName}</span>
+                          {sm ? <>
+                            {' '}<span className="sst-fname">{sm[2]}</span>{' '}
+                            <span className="sst-punct">=</span>{' '}
+                            <span className="sst-num">{sm[6]}</span><span className="sst-punct">;</span>
+                          </> : line.suffix}
+                          {'\n'}
+                        </span>
+                      );
+                    }
+                    const tokens = tokenizeSchemaLine(line.text || '');
+                    if (!tokens.length) return '\n';
                     return (
                       <span key={i}>
-                        {'  '}
-                        {isRepeated && <><span className="sst-kw">repeated</span>{' '}</>}
-                        <span
-                          className="sst-type-ref schema-tooltip-field"
-                          onMouseEnter={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
-                          onMouseMove={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
-                          onMouseLeave={() => this.setState({ schemaTooltip: null })}
-                        >{line.typeName}</span>
-                        {sm ? <>
-                          {' '}<span className="sst-fname">{sm[2]}</span>{' '}
-                          <span className="sst-punct">=</span>{' '}
-                          <span className="sst-num">{sm[6]}</span><span className="sst-punct">;</span>
-                        </> : line.suffix}
+                        {tokens.map((tok, j) =>
+                          tok.cls ? <span key={j} className={tok.cls}>{tok.text}</span> : tok.text
+                        )}
                         {'\n'}
                       </span>
                     );
-                  }
-                  const tokens = tokenizeSchemaLine(line.text || '');
-                  if (!tokens.length) return '\n';
-                  return (
-                    <span key={i}>
-                      {tokens.map((tok, j) =>
-                        tok.cls ? <span key={j} className={tok.cls}>{tok.text}</span> : tok.text
-                      )}
-                      {'\n'}
-                    </span>
-                  );
-                })}
-              </pre>
+                  })}
+                </pre>
+                <div className="grpcurl-resize-handle" onMouseDown={e => this._mdResizeStart(this._schemaModalRef, 'schemaPos', 'schemaSize', e)} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Schema enum tooltip */}
-        {schemaTooltip && (
-          <div className="schema-enum-tooltip" style={{ top: schemaTooltip.y, left: schemaTooltip.x }}>
-            <pre>{schemaTooltip.text}</pre>
-          </div>
-        )}
+          {/* Schema enum tooltip */}
+          {schemaTooltip && (
+            <div className="schema-enum-tooltip" style={{ top: schemaTooltip.y, left: schemaTooltip.x }}>
+              <pre>{schemaTooltip.text}</pre>
+            </div>
+          )}
 
-        {/* Load Test modal */}
-        {loadTest.visible && (
-          <LoadTestModal
-            entryId={loadTest.entryId}
-            log={network.log}
-            onClose={() => this.setState({ loadTest: { visible: false, entryId: null } })}
-          />
-        )}
+          {/* Load Test modal */}
+          {loadTest.visible && (
+            <LoadTestModal
+              entryId={loadTest.entryId}
+              log={network.log}
+              onClose={() => this.setState({ loadTest: { visible: false, entryId: null } })}
+            />
+          )}
 
-        {/* Scenario modal */}
-        {scenarioVisible && (
-          <ScenarioModal
-            scenarioEntryIds={scenarioEntryIds}
-            log={network.log}
-            onClose={() => this.setState({ scenarioVisible: false })}
-            onRemoveStep={this.handleScenarioRemoveStep}
-            onClearScenario={this.handleScenarioClear}
-          />
-        )}
+          {/* Scenario modal */}
+          {scenarioVisible && (
+            <ScenarioModal
+              scenarioEntryIds={scenarioEntryIds}
+              log={network.log}
+              onClose={() => this.setState({ scenarioVisible: false })}
+              onRemoveStep={this.handleScenarioRemoveStep}
+              onClearScenario={this.handleScenarioClear}
+            />
+          )}
+        </>, document.body)}
 
       </div>
     );

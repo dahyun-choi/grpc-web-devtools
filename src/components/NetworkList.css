@@ -313,6 +313,7 @@
 }
 
 .grpcurl-modal {
+  position: relative;
   background: var(--network-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -400,6 +401,33 @@
 
 .schema-modal {
   max-width: 560px;
+}
+
+.grpcurl-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  z-index: 1;
+}
+
+.grpcurl-resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--divider-color);
+  border-bottom: 2px solid var(--divider-color);
+  border-radius: 1px;
+  opacity: 0.5;
+}
+
+.grpcurl-resize-handle:hover::after {
+  opacity: 1;
 }
 
 .schema-content {
