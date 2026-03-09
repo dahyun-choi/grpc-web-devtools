@@ -260,6 +260,32 @@ The **Time**, **Code**, and **Duration** column widths can be adjusted by draggi
 - **Resize** — drag the bottom-right corner handle to resize the modal
 - The modal stays open when clicking outside; close only via the **✕** button
 
+### Copy as grpcurl
+
+Right-click any row in the request list to generate a ready-to-run `grpcurl` command.
+
+```bash
+grpcurl \
+  -proto path/to/service.proto \
+  -import-path your-proto-dir \
+  -d '{
+  "field": "value"
+}' \
+  your.server.com:443 \
+  yourpackage.YourService/YourMethod
+```
+
+- **Server address** — extracted automatically from the captured request URL (`host:port`)
+- **`-proto`** — the specific proto file for the request's service package is selected automatically:
+  - Package name is extracted from the method path
+  - The uploaded proto files are searched for a matching `package` declaration
+  - `service.proto` in the same directory is preferred
+  - Falls back to listing all proto files if no match is found
+- **`-import-path`** — set automatically from the root directory name when uploading a proto directory; omitted if no proto files are uploaded
+- **`-plaintext`** — added automatically for `http://` endpoints
+- **`-d`** — populated with the captured request body as formatted JSON
+- The command is shown in a modal with a **Copy to clipboard** button; press `Escape` to close
+
 ### Other Improvements
 
 - **OPTIONS preflight filtering** — preflight requests are hidden from the request list
