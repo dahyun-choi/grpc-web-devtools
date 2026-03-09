@@ -99,7 +99,7 @@ Hover over any field key in the request or response JSON viewer to instantly see
 - Enable with the **Field inspector** checkbox in the toolbar (checked by default when proto files are uploaded)
 - **Hover** over a field key to show a floating tooltip with:
   - **Field #** — protobuf field number
-  - **Type** — proto scalar or message type (e.g. `string`, `int32`, `Zone`)
+  - **Type** — proto scalar or message type (e.g. `string`, `int32`, `Test`)
   - **Wire** — wire type code and label (e.g. `2 (length-delimited)`)
   - **Rule** — field rule (`optional`, `repeated`, etc.)
 - **Click** a field key to pin the tooltip in the corner of the panel; click ✕ to dismiss
