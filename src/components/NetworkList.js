@@ -209,6 +209,27 @@ function buildSchemaLines(method, typeInfo) {
 class NetworkList extends Component {
   _grpcurlModalRef = React.createRef();
   _schemaModalRef = React.createRef();
+  _tooltipHideTimer = null;
+
+  _showSchemaTooltip = (text, x, y) => {
+    if (this._tooltipHideTimer) {
+      clearTimeout(this._tooltipHideTimer);
+      this._tooltipHideTimer = null;
+    }
+    this.setState({ schemaTooltip: { text, x, y } });
+  };
+
+  _hideSchemaTooltip = (immediate = false) => {
+    if (immediate) {
+      if (this._tooltipHideTimer) { clearTimeout(this._tooltipHideTimer); this._tooltipHideTimer = null; }
+      this.setState({ schemaTooltip: null });
+      return;
+    }
+    this._tooltipHideTimer = setTimeout(() => {
+      this._tooltipHideTimer = null;
+      this.setState({ schemaTooltip: null });
+    }, 120);
+  };
   _mdActiveRef = null;
   _mdActivePosKey = null;
   _mdActiveSizeKey = null;
@@ -324,6 +345,7 @@ class NetworkList extends Component {
     document.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('mousemove', this._mdMove);
     document.removeEventListener('mouseup', this._mdEnd);
+    if (this._tooltipHideTimer) clearTimeout(this._tooltipHideTimer);
   }
 
   handleKeyDown(e) {
@@ -655,9 +677,9 @@ class NetworkList extends Component {
                           {isRepeated && <><span className="sst-kw">repeated</span>{' '}</>}
                           <span
                             className="sst-type-ref schema-tooltip-field"
-                            onMouseEnter={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
-                            onMouseMove={e => this.setState({ schemaTooltip: { text: line.tooltipDef, x: e.clientX + 14, y: e.clientY + 14 } })}
-                            onMouseLeave={() => this.setState({ schemaTooltip: null })}
+                            onMouseEnter={e => this._showSchemaTooltip(line.tooltipDef, e.clientX + 14, e.clientY + 14)}
+                            onMouseMove={e => this._showSchemaTooltip(line.tooltipDef, e.clientX + 14, e.clientY + 14)}
+                            onMouseLeave={() => this._hideSchemaTooltip()}
                           >{line.typeName}</span>
                           {sm ? <>
                             {' '}<span className="sst-fname">{sm[2]}</span>{' '}
@@ -687,7 +709,12 @@ class NetworkList extends Component {
 
           {/* Schema enum tooltip */}
           {schemaTooltip && (
-            <div className="schema-enum-tooltip" style={{ top: schemaTooltip.y, left: schemaTooltip.x }}>
+            <div
+              className="schema-enum-tooltip"
+              style={{ top: schemaTooltip.y, left: schemaTooltip.x }}
+              onMouseEnter={() => this._showSchemaTooltip(schemaTooltip.text, schemaTooltip.x, schemaTooltip.y)}
+              onMouseLeave={() => this._hideSchemaTooltip(true)}
+            >
               <pre>{schemaTooltip.text}</pre>
             </div>
           )}
