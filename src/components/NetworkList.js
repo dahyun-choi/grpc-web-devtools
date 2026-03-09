@@ -324,6 +324,7 @@ class NetworkList extends Component {
     this.handleScenarioToggle = this.handleScenarioToggle.bind(this);
     this.handleScenarioRemoveStep = this.handleScenarioRemoveStep.bind(this);
     this.handleScenarioClear = this.handleScenarioClear.bind(this);
+    this.handleScenarioReorder = this.handleScenarioReorder.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -451,6 +452,10 @@ class NetworkList extends Component {
 
   handleScenarioClear() {
     this.setState({ scenarioEntryIds: [], scenarioVisible: false });
+  }
+
+  handleScenarioReorder(newIds) {
+    this.setState({ scenarioEntryIds: newIds });
   }
 
   startResize(col, e) {
@@ -738,6 +743,7 @@ class NetworkList extends Component {
               onClose={() => this.setState({ scenarioVisible: false })}
               onRemoveStep={this.handleScenarioRemoveStep}
               onClearScenario={this.handleScenarioClear}
+              onReorderSteps={this.handleScenarioReorder}
             />
           )}
         </>, document.body)}

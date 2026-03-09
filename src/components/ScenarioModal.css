@@ -146,6 +146,32 @@
   white-space: nowrap;
 }
 
+.sc-drag-handle {
+  cursor: grab;
+  color: var(--toolbar-color);
+  opacity: 0.25;
+  font-size: 13px;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.sc-step:hover .sc-drag-handle {
+  opacity: 0.55;
+}
+
+.sc-drag-handle:active {
+  cursor: grabbing;
+}
+
+.sc-step.sc-dragging {
+  opacity: 0.35;
+}
+
+.sc-step.sc-drag-over {
+  border-top: 2px solid #2196F3;
+}
+
 .sc-remove-btn {
   background: transparent;
   border: none;

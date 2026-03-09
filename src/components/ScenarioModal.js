@@ -94,6 +94,8 @@ class ScenarioModal extends Component {
     stepStatuses: [], // per step: null | 'running' | 'ok' | 'fail'
     okCount: 0,
     failCount: 0,
+    dragIdx: null,
+    dragOverIdx: null,
   };
 
   _timerId = null;
@@ -107,6 +109,32 @@ class ScenarioModal extends Component {
   _clearTimer() {
     if (this._timerId) { clearTimeout(this._timerId); this._timerId = null; }
   }
+
+  _onDragStart = (idx, e) => {
+    e.dataTransfer.effectAllowed = 'move';
+    this.setState({ dragIdx: idx });
+  };
+
+  _onDragOver = (idx, e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (this.state.dragOverIdx !== idx) this.setState({ dragOverIdx: idx });
+  };
+
+  _onDragEnd = () => {
+    this.setState({ dragIdx: null, dragOverIdx: null });
+  };
+
+  _onDrop = (targetIdx, e) => {
+    e.preventDefault();
+    const { dragIdx } = this.state;
+    this.setState({ dragIdx: null, dragOverIdx: null });
+    if (dragIdx === null || dragIdx === targetIdx) return;
+    const newIds = [...this.props.scenarioEntryIds];
+    const [removed] = newIds.splice(dragIdx, 1);
+    newIds.splice(targetIdx, 0, removed);
+    this.props.onReorderSteps(newIds);
+  };
 
   _start = () => {
     const { scenarioEntryIds } = this.props;
@@ -195,7 +223,7 @@ class ScenarioModal extends Component {
 
   render() {
     const { onClose, onRemoveStep, onClearScenario, scenarioEntryIds, log } = this.props;
-    const { delay, loops, running, stopped, loopDone, currentLoop, stepStatuses, okCount, failCount } = this.state;
+    const { delay, loops, running, stopped, loopDone, currentLoop, stepStatuses, okCount, failCount, dragIdx, dragOverIdx } = this.state;
     const totalLoops = Number(loops) || 1;
     const showProgress = running || stopped || loopDone;
 
@@ -218,8 +246,19 @@ class ScenarioModal extends Component {
               {scenarioEntryIds.map((entryId, idx) => {
                 const entry = log.find(e => e.entryId === entryId);
                 const status = stepStatuses[idx];
+                const isDragging = dragIdx === idx;
+                const isDragOver = dragOverIdx === idx && dragIdx !== idx;
                 return (
-                  <div key={entryId} className={`sc-step${status === 'running' ? ' sc-step-active' : ''}`}>
+                  <div
+                    key={entryId}
+                    className={`sc-step${status === 'running' ? ' sc-step-active' : ''}${isDragging ? ' sc-dragging' : ''}${isDragOver ? ' sc-drag-over' : ''}`}
+                    draggable={!running}
+                    onDragStart={!running ? (e) => this._onDragStart(idx, e) : undefined}
+                    onDragOver={!running ? (e) => this._onDragOver(idx, e) : undefined}
+                    onDragEnd={!running ? this._onDragEnd : undefined}
+                    onDrop={!running ? (e) => this._onDrop(idx, e) : undefined}
+                  >
+                    {!running && <span className="sc-drag-handle">⠿</span>}
                     <span className="sc-step-num">{idx + 1}</span>
                     <span className="sc-step-status">
                       {status === 'running' && <span className="sc-icon-running">⟳</span>}
