@@ -113,8 +113,7 @@ Upload your `.proto` files in **Settings** to automatically decode protobuf bina
 - **Hot reload** — uploading new proto files immediately re-decodes all previously captured responses in the request list; no need to re-trigger network calls. The Settings panel shows how many existing responses were re-decoded (e.g. `Re-decoded 12 existing response(s)`).
 
 - Supports multiple `.proto` files with cross-package imports
-- Namespace-aware type resolution — correctly handles same-named messages across different packages (e.g. `commonv1.District` vs `webgwv1.District`)
-- Auto-detects binary format mismatch for nested messages and falls back to the same-named type in the parent package
+- Namespace-aware type resolution — correctly handles same-named messages across different packages- Auto-detects binary format mismatch for nested messages and falls back to the same-named type in the parent package
 - Packed repeated enum/varint fields are decoded correctly
 
 ### Repeat Request
