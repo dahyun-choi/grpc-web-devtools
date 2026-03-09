@@ -103,7 +103,7 @@ Hover over any field key in the request or response JSON viewer to instantly see
   - **Wire** — wire type code and label (e.g. `2 (length-delimited)`)
   - **Rule** — field rule (`optional`, `repeated`, etc.)
 - **Click** a field key to pin the tooltip in the corner of the panel; click ✕ to dismiss
-- Works with both snake_case proto fields (e.g. `zone_id`) and their camelCase JSON representations (e.g. `zoneId`)
+- Works with both snake_case proto fields (e.g. `field_name`) and their camelCase JSON representations (e.g. `fieldName`)
 - Searches recursively through nested message types when the field is not at the top level
 
 ### Proto File Upload & Binary Decoding
