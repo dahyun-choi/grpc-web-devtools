@@ -190,7 +190,7 @@ Server-streaming RPCs are tracked in a single row that updates in place as messa
 Build and send a brand-new gRPC request directly from the DevTools panel without re-triggering it from the page.
 
 - Click the **Gen** button in the toolbar to open the Request Generator modal
-- **Method selector** — searches all methods from the uploaded proto files, filtered to packages already seen on the current page (e.g. if the page uses `ridergwv1.*`, only those methods are shown); use arrow keys + Enter for keyboard navigation
+- **Method selector** — searches all methods from the uploaded proto files, filtered to packages already seen on the current page; use arrow keys + Enter for keyboard navigation
 - **URL** — auto-populated from the most recent matching captured request
 - **Headers** — auto-populated from the captured request (filtered to safe headers only: `content-type`, `authorization`, `x-*`, etc.)
 - **Request body** — pre-filled with an auto-generated example from the proto schema; edit inline via the JSON editor; **Reset** button restores the example
