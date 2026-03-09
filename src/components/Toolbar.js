@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen, setPaused } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setFastRender, setRequestGeneratorOpen, setPaused } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
@@ -197,6 +197,15 @@ class Toolbar extends Component {
               />
               <label htmlFor="ui-checkbox-field-inspector">Field inspector</label>
             </span>
+            <span className="toolbar-item checkbox" title="Use fast text renderer for large JSON payloads (>20KB). Faster rendering but no expand/collapse.">
+              <input
+                type="checkbox"
+                id="ui-checkbox-fast-render"
+                checked={toolbar.fastRender}
+                onChange={this._onFastRenderChanged}
+              />
+              <label htmlFor="ui-checkbox-fast-render">Fast render</label>
+            </span>
           </div>
         </div>
         {this._renderFilterToolbar()}
@@ -263,6 +272,11 @@ class Toolbar extends Component {
     const { setFieldInspector } = this.props;
     setFieldInspector(e.target.checked);
   }
+
+  _onFastRenderChanged = e => {
+    const { setFastRender } = this.props;
+    setFastRender(e.target.checked);
+  }
 }
 
 class ToolbarDivider extends Component {
@@ -296,6 +310,7 @@ const mapDispatchToProps = {
   setSettingsOpen,
   setSplitPanel,
   setFieldInspector,
+  setFastRender,
   setRequestGeneratorOpen,
   setPaused,
   applyGlobalSearch

@@ -765,3 +765,22 @@
   font-size: 11px;
   color: var(--toolbar-color);
 }
+
+/* ── Fast JSON renderer (large payload fallback) ─────────────────── */
+.fast-json-viewer {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px;
+  white-space: pre;
+  overflow: auto;
+  color: var(--toolbar-color);
+  background: transparent;
+  margin: 0;
+  flex: 1;
+}
+
+.fj-key { color: #9cdcfe; }
+.fj-str { color: #ce9178; }
+.fj-num { color: #b5cea8; }
+.fj-lit { color: #569cd6; }

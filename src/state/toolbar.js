@@ -12,6 +12,7 @@ const toolbarSlice = createSlice({
     settingsOpen: false,
     splitPanel: true,
     fieldInspector: true,
+    fastRender: false,
     requestGeneratorOpen: false,
     paused: false,
   },
@@ -37,6 +38,9 @@ const toolbarSlice = createSlice({
     setFieldInspector(state, action) {
       state.fieldInspector = action.payload;
     },
+    setFastRender(state, action) {
+      state.fastRender = action.payload;
+    },
     setRequestGeneratorOpen(state, action) {
       state.requestGeneratorOpen = action.payload;
     },
@@ -48,6 +52,6 @@ const toolbarSlice = createSlice({
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen, setSplitPanel, setFieldInspector, setRequestGeneratorOpen, setPaused } = actions;
+export const { toggleFilter, setFilterValue, setGlobalSearchValue, setSettingsOpen, setSplitPanel, setFieldInspector, setFastRender, setRequestGeneratorOpen, setPaused } = actions;
 
 export default reducer

@@ -17,6 +17,8 @@ import "./NetworkDetails.css";
 
 const LARGE_PAYLOAD_BYTES = 1024 * 1024;
 const VERY_LARGE_PAYLOAD_BYTES = 5 * 1024 * 1024;
+// Above this size, use a fast <pre>-based renderer instead of react-json-view
+const FAST_RENDER_THRESHOLD = 20 * 1024; // 20KB
 
 // Removed arrayBufferToBase64 - now defined inline where needed
 
@@ -813,6 +815,32 @@ class NetworkDetails extends Component {
     );
   };
 
+  // Fast JSON renderer for large payloads: plain <pre> with syntax coloring
+  // avoids react-json-view's per-node React component overhead.
+  _renderFastJson = (src) => {
+    const json = JSON.stringify(src, null, 2);
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const parts = [];
+    const regex = /("(?:[^"\\]|\\.)*")(\s*:)?|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+    let lastIndex = 0, match;
+    while ((match = regex.exec(json)) !== null) {
+      if (match.index > lastIndex) parts.push(esc(json.slice(lastIndex, match.index)));
+      if (match[1]) {
+        if (match[2]) parts.push(`<span class="fj-key">${esc(match[1])}</span>${esc(match[2])}`);
+        else           parts.push(`<span class="fj-str">${esc(match[1])}</span>`);
+      } else if (match[3]) parts.push(`<span class="fj-lit">${match[3]}</span>`);
+      else if (match[4])   parts.push(`<span class="fj-num">${match[4]}</span>`);
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < json.length) parts.push(esc(json.slice(lastIndex)));
+    return (
+      <pre
+        className="fast-json-viewer"
+        dangerouslySetInnerHTML={{ __html: parts.join('') }}
+      />
+    );
+  };
+
   _renderRequestBody = (method, request, editMode, editedData, collapsed, inspectorEnabled, kind) => {
     if (!request) {
       return <div className="no-data">No request body</div>;
@@ -820,6 +848,10 @@ class NetworkDetails extends Component {
 
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
     const src = editMode && editedData ? editedData.request : request;
+
+    if (!editMode && this.props.fastRender && JSON.stringify(src).length > FAST_RENDER_THRESHOLD) {
+      return this._renderFastJson(src);
+    }
 
     return (
       <ReactJson
@@ -897,6 +929,10 @@ class NetworkDetails extends Component {
 
     if (!response) {
       return <div className="no-data">No response body</div>;
+    }
+
+    if (this.props.fastRender && JSON.stringify(response).length > FAST_RENDER_THRESHOLD) {
+      return this._renderFastJson(response);
     }
 
     return (
@@ -2138,6 +2174,7 @@ const mapStateToProps = (state) => ({
   globalSearchValue: state.toolbar.globalSearchValue,
   splitPanel: state.toolbar.splitPanel,
   fieldInspector: state.toolbar.fieldInspector,
+  fastRender: state.toolbar.fastRender,
   log: state.network.log,
   pendingAction: state.network.pendingAction,
 });
