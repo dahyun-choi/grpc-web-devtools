@@ -798,9 +798,40 @@ class ProtoManager {
     console.log('[ProtoManager] Manual decoding for type:', messageType.name, '| fullName:', messageType.fullName);
 
     try {
-      // Use Reader to decode
-      const reader = protobuf.Reader.create(bytes);
+      // Pre-populate result in proto declaration order with default values.
+      // This ensures field order matches the original gRPC-Web client output
+      // and that all fields appear even when absent from the binary.
+      const SCALAR_DEFAULTS = {
+        string: '', bool: false, bytes: '',
+        float: 0, double: 0,
+        int32: 0, int64: 0, uint32: 0, uint64: 0,
+        sint32: 0, sint64: 0,
+        fixed32: 0, fixed64: 0, sfixed32: 0, sfixed64: 0,
+      };
       const result = {};
+      for (const fieldName in messageType.fields) {
+        const field = messageType.fields[fieldName];
+        const camelName = this.snakeToCamelCase(fieldName);
+        if (field.repeated)              { result[camelName] = []; }
+        else if (field.map)              { result[camelName] = {}; }
+        else if (field.type in SCALAR_DEFAULTS) { result[camelName] = SCALAR_DEFAULTS[field.type]; }
+        else {
+          // Reserve key slot to preserve proto declaration order.
+          // Try to detect enum types (default 0); message-type fields get undefined as placeholder.
+          let isEnum = false;
+          try {
+            field.resolve();
+            isEnum = field.resolvedType instanceof protobuf.Enum;
+          } catch (_) {}
+          if (!isEnum) {
+            try { this.root.lookupEnum(field.type); isEnum = true; } catch (_) {}
+          }
+          result[camelName] = isEnum ? 0 : undefined;
+        }
+      }
+
+      // Use Reader to decode binary and overwrite defaults with actual values
+      const reader = protobuf.Reader.create(bytes);
 
       while (reader.pos < reader.len) {
         // Wrap each field in try-catch so one bad field doesn't abort the whole message
@@ -856,9 +887,7 @@ class ProtoManager {
               ? field.resolvedType
               : this.root.lookupEnum(field.type); } catch (e) { /* not an enum */ }
             while (packedReader.pos < packedReader.len) {
-              const raw = packedReader.int32();
-              const resolved = enumType?.valuesById?.[raw] ?? raw;
-              result[camelFieldName].push(resolved);
+              result[camelFieldName].push(packedReader.int32());
             }
           } catch (e) {
             console.warn(`[ProtoManager] Failed to read packed field ${fieldName}:`, e.message);
@@ -894,6 +923,11 @@ class ProtoManager {
         } else {
           result[camelFieldName] = value;
         }
+      }
+
+      // Remove placeholder undefined values (message-type fields absent from binary)
+      for (const key of Object.keys(result)) {
+        if (result[key] === undefined) delete result[key];
       }
 
       console.log('[ProtoManager] ✓ Manual decode succeeded:', result);
@@ -996,22 +1030,14 @@ class ProtoManager {
       return type === 'fixed32' ? reader.fixed32() : reader.sfixed32();
     } else if (type === 'enum' || field.resolvedType instanceof protobuf.Enum) {
       if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
-      const enumValue = reader.int32();
-      try {
-        const enumType = this.root.lookupEnum(field.type);
-        if (enumType && enumType.valuesById) {
-          return enumType.valuesById[enumValue] ?? enumValue;
-        }
-      } catch (e) { /* ignore */ }
-      return enumValue;
+      return reader.int32();
     } else {
       // Try enum lookup first (handles cases where resolvedType is null)
       try {
         const enumType = this.root.lookupEnum(field.type);
         if (enumType) {
           if (wireType !== 0) { try { reader.skipType(wireType); } catch (e) { /* ignore */ } return null; }
-          const enumValue = reader.int32();
-          return enumType.valuesById?.[enumValue] ?? enumValue;
+          return reader.int32();
         }
       } catch (e) {
         // Not an enum, continue to message type handling
