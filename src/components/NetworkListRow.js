@@ -5,6 +5,18 @@ import { connect } from 'react-redux';
 import { selectLogEntry } from '../state/network';
 import MethodIcon from './MethodIcon';
 
+function highlightText(text, keyword) {
+  if (!keyword || !keyword.trim() || !text) return text;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  if (parts.length <= 1) return text;
+  return parts.map((part, i) =>
+    i % 2 === 1
+      ? <mark key={i} className="search-highlight-list">{part}</mark>
+      : part
+  );
+}
+
 class NetworkListRow extends PureComponent {
   formatTime(timestamp) {
     if (!timestamp) return '';
@@ -38,7 +50,7 @@ class NetworkListRow extends PureComponent {
 
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const { log: logArray, onContextMenu, scenarioEntryIds, colWidths = { time: 100, code: 60, duration: 60 } } = data;
+    const { log: logArray, onContextMenu, scenarioEntryIds, colWidths = { time: 100, code: 60, duration: 60 }, globalSearchValue } = data;
     const log = logArray[index];
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     const scenarioIdx = scenarioEntryIds ? scenarioEntryIds.indexOf(log.entryId) : -1;
@@ -52,7 +64,7 @@ class NetworkListRow extends PureComponent {
         <span className="time-cell" style={{ width: colWidths.time - 5 }}>{this.formatTime(log.timestamp)}</span>
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
-          {log.endpoint}
+          {highlightText(log.endpoint, globalSearchValue)}
           {scenarioIdx >= 0 && (
             <span className="scenario-badge" title={`Scenario step ${scenarioIdx + 1}`}>{scenarioIdx + 1}</span>
           )}

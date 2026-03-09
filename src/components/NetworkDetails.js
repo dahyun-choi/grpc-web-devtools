@@ -1844,9 +1844,8 @@ class NetworkDetails extends Component {
   };
 
   _clearHighlights = () => {
-    if (!this.jsonContainerRef.current) return;
-
-    const container = this.jsonContainerRef.current;
+    const container = this.jsonContainerRef.current || this.containerRef.current;
+    if (!container) return;
     const marks = container.querySelectorAll('mark.search-highlight');
     marks.forEach(mark => {
       const parent = mark.parentNode;
@@ -1882,9 +1881,8 @@ class NetworkDetails extends Component {
 
     // react-json-view가 렌더링될 때까지 대기 (debounced)
     this.highlightTimeout = setTimeout(() => {
-      if (!this.jsonContainerRef.current) return;
-
-      const container = this.jsonContainerRef.current;
+      const container = this.jsonContainerRef.current || this.containerRef.current;
+      if (!container) return;
       const escapedSearch = searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escapedSearch, 'gi');
 

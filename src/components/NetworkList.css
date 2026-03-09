@@ -186,6 +186,18 @@
   color: #7c3aed;
 }
 
+.search-highlight-list {
+  background: #e6a817;
+  color: #000;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.data-row.selected .search-highlight-list {
+  background: #c8860e;
+  color: #fff;
+}
+
 .stream-count-badge {
   display: inline-flex;
   align-items: center;

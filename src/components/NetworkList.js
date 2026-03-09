@@ -512,11 +512,13 @@ class NetworkList extends Component {
   getItemData() {
     const { log } = this.props.network;
     const { scenarioEntryIds, colWidths } = this.state;
-    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths) {
+    const globalSearchValue = this.props.globalSearchValue || '';
+    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths || this._cachedSearch !== globalSearchValue) {
       this._cachedLog = log;
       this._cachedScenarioIds = scenarioEntryIds;
       this._cachedColWidths = colWidths;
-      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths };
+      this._cachedSearch = globalSearchValue;
+      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths, globalSearchValue };
     }
     return this._cachedItemData;
   }
@@ -745,6 +747,6 @@ class NetworkList extends Component {
   }
 }
 
-const mapStateToProps = state => ({ network: state.network });
+const mapStateToProps = state => ({ network: state.network, globalSearchValue: state.toolbar.globalSearchValue });
 const mapDispatchToProps = { selectLogEntry, setPendingAction };
 export default connect(mapStateToProps, mapDispatchToProps)(NetworkList);
