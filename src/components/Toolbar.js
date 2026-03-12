@@ -18,6 +18,8 @@ class Toolbar extends Component {
   state = {
     position: null, // { x, y }
     size: null,     // { width, height }
+    optimisticSplitPanel: null,
+    optimisticFastRender: null,
   };
 
   _modalRef = React.createRef();
@@ -154,6 +156,7 @@ class Toolbar extends Component {
   render() {
     const { preserveLog, toolbar, setSettingsOpen } = this.props;
     const { settingsOpen } = toolbar;
+    const { optimisticSplitPanel, optimisticFastRender } = this.state;
     return (
       <>
         <div className="toolbar">
@@ -183,7 +186,7 @@ class Toolbar extends Component {
               <input
                 type="checkbox"
                 id="ui-checkbox-split-panel"
-                checked={toolbar.splitPanel}
+                checked={optimisticSplitPanel ?? toolbar.splitPanel}
                 onChange={this._onSplitPanelChanged}
               />
               <label htmlFor="ui-checkbox-split-panel">Split panel</label>
@@ -201,7 +204,7 @@ class Toolbar extends Component {
               <input
                 type="checkbox"
                 id="ui-checkbox-fast-render"
-                checked={toolbar.fastRender}
+                checked={optimisticFastRender ?? toolbar.fastRender}
                 onChange={this._onFastRenderChanged}
               />
               <label htmlFor="ui-checkbox-fast-render">Fast render</label>
@@ -264,8 +267,12 @@ class Toolbar extends Component {
   }
 
   _onSplitPanelChanged = e => {
-    const { setSplitPanel } = this.props;
-    setSplitPanel(e.target.checked);
+    const checked = e.target.checked;
+    this.setState({ optimisticSplitPanel: checked });
+    setTimeout(() => {
+      this.props.setSplitPanel(checked);
+      this.setState({ optimisticSplitPanel: null });
+    }, 0);
   }
 
   _onFieldInspectorChanged = e => {
@@ -274,8 +281,12 @@ class Toolbar extends Component {
   }
 
   _onFastRenderChanged = e => {
-    const { setFastRender } = this.props;
-    setFastRender(e.target.checked);
+    const checked = e.target.checked;
+    this.setState({ optimisticFastRender: checked });
+    setTimeout(() => {
+      this.props.setFastRender(checked);
+      this.setState({ optimisticFastRender: null });
+    }, 0);
   }
 }
 

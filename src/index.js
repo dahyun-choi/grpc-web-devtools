@@ -164,28 +164,24 @@ if (chrome?.storage?.local) {
   });
 }
 
-// Save UI settings whenever they change (debounced)
-let _uiSettingsSaveTimer = null;
+// Save UI settings whenever they change
 let _prevUiSettings = null;
 store.subscribe(() => {
   const state = store.getState();
   const next = {
-    preserveLog:   state.network.preserveLog,
-    splitPanel:    state.toolbar.splitPanel,
+    preserveLog:    state.network.preserveLog,
+    splitPanel:     state.toolbar.splitPanel,
     fieldInspector: state.toolbar.fieldInspector,
-    fastRender:    state.toolbar.fastRender,
+    fastRender:     state.toolbar.fastRender,
   };
   if (_prevUiSettings &&
-      _prevUiSettings.preserveLog   === next.preserveLog &&
-      _prevUiSettings.splitPanel    === next.splitPanel &&
+      _prevUiSettings.preserveLog    === next.preserveLog &&
+      _prevUiSettings.splitPanel     === next.splitPanel &&
       _prevUiSettings.fieldInspector === next.fieldInspector &&
-      _prevUiSettings.fastRender    === next.fastRender) return;
+      _prevUiSettings.fastRender     === next.fastRender) return;
   _prevUiSettings = next;
   if (chrome?.storage?.local) {
-    clearTimeout(_uiSettingsSaveTimer);
-    _uiSettingsSaveTimer = setTimeout(() => {
-      chrome.storage.local.set({ [UI_SETTINGS_KEY]: next });
-    }, 300);
+    chrome.storage.local.set({ [UI_SETTINGS_KEY]: next });
   }
 });
 
