@@ -24,8 +24,16 @@ class DebuggerCapture {
     try {
       console.log('[DebuggerCapture] Attaching debugger to tab:', this.tabId);
 
-      // Attach debugger (protocol version 1.3)
-      await chrome.debugger.attach({ tabId: this.tabId }, '1.3');
+      // Attach debugger (protocol version 1.3).
+      // If already attached from a previous session (e.g., DevTools was closed
+      // before detach completed), detach first then re-attach.
+      try {
+        await chrome.debugger.attach({ tabId: this.tabId }, '1.3');
+      } catch (attachErr) {
+        console.warn('[DebuggerCapture] Attach failed, attempting detach+reattach:', attachErr.message);
+        await chrome.debugger.detach({ tabId: this.tabId });
+        await chrome.debugger.attach({ tabId: this.tabId }, '1.3');
+      }
 
       console.log('[DebuggerCapture] ✓ Debugger attached');
 
