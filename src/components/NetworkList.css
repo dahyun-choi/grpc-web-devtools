@@ -248,13 +248,13 @@
 }
 
 .duration-column {
-  width: 45px;
+  width: 55px;
   text-align: right;
 }
 
 .duration-cell {
   display: inline-block;
-  width: 40px;
+  width: 50px;
   font-family: monospace;
   font-size: 11px;
   text-align: right;

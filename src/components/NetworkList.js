@@ -313,7 +313,7 @@ class NetworkList extends Component {
       schemaTooltip: null,
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
-      colWidths: { time: 85, code: 60, duration: 45 },
+      colWidths: { time: 85, code: 60, duration: 55 },
       columnVisibility: { time: true, code: true, duration: true },
       colMenu: { visible: false, x: 0, y: 0 },
     };
