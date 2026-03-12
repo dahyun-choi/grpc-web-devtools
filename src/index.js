@@ -6,8 +6,8 @@ import { Provider } from 'react-redux';
 import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
-import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration, networkLog, buildSummaryEntry } from './state/network';
-import toolbarReducer from './state/toolbar';
+import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration, networkLog, buildSummaryEntry, setPreserveLog } from './state/network';
+import toolbarReducer, { setSplitPanel, setFieldInspector, setFastRender } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
 import { getAllNetworkEntries } from './state/networkCache';
@@ -146,6 +146,46 @@ const store = configureStore({
     network: networkReducer,
     toolbar: toolbarReducer,
     clipboard: clipboardReducer,
+  }
+});
+
+// ── UI settings persistence ───────────────────────────────────────────────────
+const UI_SETTINGS_KEY = 'grpc_devtools_ui_settings_v1';
+
+// Load persisted UI settings and dispatch to store
+if (chrome?.storage?.local) {
+  chrome.storage.local.get([UI_SETTINGS_KEY], (result) => {
+    const s = result[UI_SETTINGS_KEY];
+    if (!s) return;
+    if (s.preserveLog  != null) store.dispatch(setPreserveLog(s.preserveLog));
+    if (s.splitPanel   != null) store.dispatch(setSplitPanel(s.splitPanel));
+    if (s.fieldInspector != null) store.dispatch(setFieldInspector(s.fieldInspector));
+    if (s.fastRender   != null) store.dispatch(setFastRender(s.fastRender));
+  });
+}
+
+// Save UI settings whenever they change (debounced)
+let _uiSettingsSaveTimer = null;
+let _prevUiSettings = null;
+store.subscribe(() => {
+  const state = store.getState();
+  const next = {
+    preserveLog:   state.network.preserveLog,
+    splitPanel:    state.toolbar.splitPanel,
+    fieldInspector: state.toolbar.fieldInspector,
+    fastRender:    state.toolbar.fastRender,
+  };
+  if (_prevUiSettings &&
+      _prevUiSettings.preserveLog   === next.preserveLog &&
+      _prevUiSettings.splitPanel    === next.splitPanel &&
+      _prevUiSettings.fieldInspector === next.fieldInspector &&
+      _prevUiSettings.fastRender    === next.fastRender) return;
+  _prevUiSettings = next;
+  if (chrome?.storage?.local) {
+    clearTimeout(_uiSettingsSaveTimer);
+    _uiSettingsSaveTimer = setTimeout(() => {
+      chrome.storage.local.set({ [UI_SETTINGS_KEY]: next });
+    }, 300);
   }
 });
 
