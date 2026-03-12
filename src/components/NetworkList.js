@@ -312,7 +312,7 @@ class NetworkList extends Component {
       schemaTooltip: null,
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
-      colWidths: { time: 100, code: 60, duration: 60 },
+      colWidths: { time: 85, code: 60, duration: 45 },
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
@@ -560,7 +560,7 @@ class NetworkList extends Component {
                     </th>
                     <th className="duration-column" style={{ width: colWidths.duration }}>
                       <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('duration', e)} />
-                      <div>Duration</div>
+                      <div>Dur.</div>
                     </th>
                   </tr>
                 </tbody>

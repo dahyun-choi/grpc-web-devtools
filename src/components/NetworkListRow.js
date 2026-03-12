@@ -61,7 +61,7 @@ class NetworkListRow extends PureComponent {
         onClick={() => selectLogEntry(index)}
         onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(e, log.entryId); }}
       >
-        <span className="time-cell" style={{ width: colWidths.time - 5 }}>{this.formatTime(log.timestamp)}</span>
+        <span className="time-cell" style={{ width: colWidths.time - 5 }} title={this.formatTime(log.timestamp)}>{this.formatTime(log.timestamp)}</span>
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {highlightText(log.endpoint, globalSearchValue)}
@@ -79,8 +79,8 @@ class NetworkListRow extends PureComponent {
             </span>
           )}
         </span>
-        <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`} style={{ width: colWidths.code }}>{this.formatStatusCode(log.statusCode)}</span>
-        <span className="duration-cell" style={{ width: colWidths.duration - 4 }}>{this.formatDuration(log.duration)}</span>
+        <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`} style={{ width: colWidths.code }} title={this.formatStatusCode(log.statusCode)}>{this.formatStatusCode(log.statusCode)}</span>
+        <span className="duration-cell" style={{ width: colWidths.duration - 4 }} title={this.formatDuration(log.duration)}>{this.formatDuration(log.duration)}</span>
       </div >
     );
   }

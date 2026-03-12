@@ -122,17 +122,20 @@
 }
 
 .time-column {
-  width: 100px;
+  width: 85px;
 }
 
 .time-cell {
   display: inline-block;
-  width: 95px;
+  width: 80px;
   margin-right: 5px;
   font-family: monospace;
   font-size: 11px;
   color: var(--toolbar-color);
   opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .name-cell {
@@ -227,6 +230,9 @@
   font-size: 11px;
   text-align: center;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .code-cell.ok-code {
@@ -242,19 +248,22 @@
 }
 
 .duration-column {
-  width: 60px;
+  width: 45px;
   text-align: right;
 }
 
 .duration-cell {
   display: inline-block;
-  width: 55px;
+  width: 40px;
   font-family: monospace;
   font-size: 11px;
   text-align: right;
   color: var(--toolbar-color);
   opacity: 0.8;
   padding-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resize-handle {
