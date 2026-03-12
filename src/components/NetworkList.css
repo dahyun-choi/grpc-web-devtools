@@ -316,6 +316,23 @@
   background: var(--network-row-hover);
 }
 
+.col-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.col-menu-check {
+  width: 12px;
+  font-size: 11px;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.col-menu-check.col-menu-check-on {
+  opacity: 1;
+}
+
 .grpc-context-menu-divider {
   height: 1px;
   background: var(--divider-color);

@@ -1,4 +1,5 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
+/* global chrome */
 
 import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
@@ -313,6 +314,8 @@ class NetworkList extends Component {
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
       colWidths: { time: 85, code: 60, duration: 45 },
+      columnVisibility: { time: true, code: true, duration: true },
+      colMenu: { visible: false, x: 0, y: 0 },
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
@@ -339,6 +342,13 @@ class NetworkList extends Component {
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('mousemove', this._mdMove);
     document.addEventListener('mouseup', this._mdEnd);
+    // Restore column visibility from storage
+    if (chrome?.storage?.local) {
+      chrome.storage.local.get(['grpc_devtools_column_visibility_v1'], (result) => {
+        const saved = result['grpc_devtools_column_visibility_v1'];
+        if (saved) this.setState({ columnVisibility: { ...this.state.columnVisibility, ...saved } });
+      });
+    }
   }
 
   componentWillUnmount() {
@@ -458,6 +468,25 @@ class NetworkList extends Component {
     this.setState({ scenarioEntryIds: newIds });
   }
 
+  handleColumnHeaderMenu = (e) => {
+    e.preventDefault();
+    this.setState({ colMenu: { visible: true, x: e.clientX, y: e.clientY } });
+  };
+
+  hideColumnMenu = () => {
+    this.setState({ colMenu: { visible: false, x: 0, y: 0 } });
+  };
+
+  toggleColumnVisibility = (col) => {
+    this.setState(s => {
+      const columnVisibility = { ...s.columnVisibility, [col]: !s.columnVisibility[col] };
+      if (chrome?.storage?.local) {
+        chrome.storage.local.set({ grpc_devtools_column_visibility_v1: columnVisibility });
+      }
+      return { columnVisibility };
+    });
+  };
+
   startResize(col, e) {
     e.preventDefault();
     const startX = e.clientX;
@@ -516,21 +545,22 @@ class NetworkList extends Component {
 
   getItemData() {
     const { log } = this.props.network;
-    const { scenarioEntryIds, colWidths } = this.state;
+    const { scenarioEntryIds, colWidths, columnVisibility } = this.state;
     const globalSearchValue = this.props.globalSearchValue || '';
-    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths || this._cachedSearch !== globalSearchValue) {
+    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths || this._cachedSearch !== globalSearchValue || this._cachedColVis !== columnVisibility) {
       this._cachedLog = log;
       this._cachedScenarioIds = scenarioEntryIds;
       this._cachedColWidths = colWidths;
       this._cachedSearch = globalSearchValue;
-      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths, globalSearchValue };
+      this._cachedColVis = columnVisibility;
+      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths, columnVisibility, globalSearchValue };
     }
     return this._cachedItemData;
   }
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths } = this.state;
+    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu } = this.state;
 
     const grpcurlStyle = {};
     if (grpcurlPos) { grpcurlStyle.position = 'fixed'; grpcurlStyle.left = grpcurlPos.x; grpcurlStyle.top = grpcurlPos.y; grpcurlStyle.margin = 0; }
@@ -545,23 +575,29 @@ class NetworkList extends Component {
       <div className="widget vbox network-list">
         <div className="widget vbox">
           <div className="data-grid">
-            <div className="header-container">
+            <div className="header-container" onContextMenu={this.handleColumnHeaderMenu}>
               <table className="header">
                 <tbody>
                   <tr>
-                    <th className="time-column" style={{ width: colWidths.time }}>
-                      <div>Time</div>
-                      <div className="resize-handle" onMouseDown={e => this.startResize('time', e)} />
-                    </th>
+                    {columnVisibility.time && (
+                      <th className="time-column" style={{ width: colWidths.time }}>
+                        <div>Time</div>
+                        <div className="resize-handle" onMouseDown={e => this.startResize('time', e)} />
+                      </th>
+                    )}
                     <th><div>Name</div></th>
-                    <th className="code-column" style={{ width: colWidths.code }}>
-                      <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('code', e)} />
-                      <div>Code</div>
-                    </th>
-                    <th className="duration-column" style={{ width: colWidths.duration }}>
-                      <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('duration', e)} />
-                      <div>Dur.</div>
-                    </th>
+                    {columnVisibility.code && (
+                      <th className="code-column" style={{ width: colWidths.code }}>
+                        <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('code', e)} />
+                        <div>Code</div>
+                      </th>
+                    )}
+                    {columnVisibility.duration && (
+                      <th className="duration-column" style={{ width: colWidths.duration }}>
+                        <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('duration', e)} />
+                        <div>Dur.</div>
+                      </th>
+                    )}
                   </tr>
                 </tbody>
               </table>
@@ -746,6 +782,23 @@ class NetworkList extends Component {
               onReorderSteps={this.handleScenarioReorder}
             />
           )}
+        </>, document.body)}
+
+        {/* Column visibility menu */}
+        {colMenu.visible && ReactDOM.createPortal(<>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={this.hideColumnMenu} />
+          <div className="grpc-context-menu" style={{ left: colMenu.x, top: colMenu.y, zIndex: 9000 }}>
+            {[
+              { key: 'time', label: 'Time' },
+              { key: 'code', label: 'Code' },
+              { key: 'duration', label: 'Dur.' },
+            ].map(({ key, label }) => (
+              <button key={key} className="grpc-context-menu-item col-menu-item" onClick={() => this.toggleColumnVisibility(key)}>
+                <span className={`col-menu-check ${columnVisibility[key] ? 'col-menu-check-on' : ''}`}>✓</span>
+                {label}
+              </button>
+            ))}
+          </div>
         </>, document.body)}
 
       </div>
