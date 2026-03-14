@@ -40,6 +40,7 @@ class RequestGenerator extends Component {
     position: null, // { x, y } — null means centered (default)
     size: null,     // { width, height } — null means default CSS size
     templates: [],
+    collections: [],
     templatesOpen: false,
     templateFilter: '',
   };
@@ -106,11 +107,18 @@ class RequestGenerator extends Component {
 
   _loadTemplates = () => {
     if (chrome?.storage?.local) {
-      chrome.storage.local.get(['grpc_devtools_templates_v1'], (result) => {
-        this.setState({ templates: result['grpc_devtools_templates_v1'] || [] });
+      chrome.storage.local.get(['grpc_devtools_templates_v1', 'grpc_devtools_collections_v1'], (result) => {
+        this.setState({
+          templates: result['grpc_devtools_templates_v1'] || [],
+          collections: result['grpc_devtools_collections_v1'] || [],
+        });
       });
     }
   };
+
+  _resolveVars = (str, vars) =>
+    vars.reduce((s, { key, value }) =>
+      s.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value), str);
 
   _reorderByProto = (messageType, obj) => {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
@@ -135,11 +143,12 @@ class RequestGenerator extends Component {
   };
 
   _applyTemplate = (template) => {
-    const headers = (template.headers || []).map((h, i) => ({
+    let headers = (template.headers || []).map((h, i) => ({
       id: Date.now() + i,
       key: h.key,
       value: h.value,
     }));
+    let url = template.url || '';
     const matched = this.state.methods.find(m =>
       m.fullPath === template.method ||
       template.method?.endsWith(`/${m.fullPath}`) ||
@@ -155,8 +164,20 @@ class RequestGenerator extends Component {
       }
     }
 
+    // Resolve collection variables: replace {{key}} with value
+    const collection = this.state.collections.find(c => c.id === template.collectionId);
+    const vars = (collection?.variables || []).filter(v => v.key);
+    if (vars.length) {
+      url = this._resolveVars(url, vars);
+      headers = headers.map(h => ({ ...h, value: this._resolveVars(h.value, vars) }));
+      try {
+        const bodyStr = this._resolveVars(JSON.stringify(body), vars);
+        body = JSON.parse(bodyStr);
+      } catch (_) {}
+    }
+
     this.setState({
-      url: template.url || '',
+      url: url,
       headers,
       body,
       selectedMethod: matched || null,

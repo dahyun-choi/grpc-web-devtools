@@ -16,6 +16,10 @@ class TemplateManager extends Component {
     selectedId: null,
     collapsedIds: new Set(),
 
+    selectedCollectionId: null,  // when set, show variables panel
+    editVariables: [],           // local edit state for collection variables
+    variablesSaved: false,
+
     editCollectionId: null,
     editCollectionName: '',
     editTemplateNameId: null,
@@ -70,6 +74,7 @@ class TemplateManager extends Component {
 
   _select = (t) => {
     this.setState({
+      selectedCollectionId: null,
       selectedId: t.id,
       editName: t.name || '',
       editUrl: t.url || '',
@@ -107,6 +112,48 @@ class TemplateManager extends Component {
     });
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ [STORAGE_KEY]: updated });
+    }
+  };
+
+  // ── Collection variables ──────────────────────────────────────────
+
+  _selectCollection = (col) => {
+    this.setState({
+      selectedCollectionId: col.id,
+      selectedId: null,
+      editVariables: (col.variables || []).map((v, i) => ({ ...v, _key: i })),
+      variablesSaved: false,
+    });
+  };
+
+  _addVariable = () => {
+    this.setState(s => ({
+      editVariables: [...s.editVariables, { key: '', value: '', _key: Date.now() }],
+    }));
+  };
+
+  _updateVariable = (idx, field, val) => {
+    this.setState(s => {
+      const editVariables = [...s.editVariables];
+      editVariables[idx] = { ...editVariables[idx], [field]: val };
+      return { editVariables };
+    });
+  };
+
+  _removeVariable = (idx) => {
+    this.setState(s => ({ editVariables: s.editVariables.filter((_, i) => i !== idx) }));
+  };
+
+  _saveVariables = () => {
+    const { selectedCollectionId, editVariables, collections } = this.state;
+    const variables = editVariables.map(({ key, value }) => ({ key, value }));
+    const updated = collections.map(c =>
+      c.id !== selectedCollectionId ? c : { ...c, variables }
+    );
+    this.setState({ collections: updated, variablesSaved: true });
+    setTimeout(() => this.setState({ variablesSaved: false }), 1800);
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ [COLLECTIONS_KEY]: updated });
     }
   };
 
@@ -350,6 +397,7 @@ class TemplateManager extends Component {
     if (!this.props.open) return null;
     const {
       templates, collections, selectedId, collapsedIds,
+      selectedCollectionId, editVariables, variablesSaved,
       editCollectionId, editCollectionName, editTemplateCollectionId,
       editTemplateNameId, editTemplateNameValue,
       editName, editUrl, editHeaders, editBody, headersCollapsed, saved, position, size,
@@ -469,7 +517,11 @@ class TemplateManager extends Component {
                         />
                       ) : (
                         <>
-                          <span className="tm-collection-name" onDoubleClick={() => this._startRenameCollection(col)}>
+                          <span
+                            className={`tm-collection-name${selectedCollectionId === col.id ? ' tm-collection-name-active' : ''}`}
+                            onClick={() => this._selectCollection(col)}
+                            onDoubleClick={() => this._startRenameCollection(col)}
+                          >
                             {col.name}
                           </span>
                           <span className="tm-collection-count">({colTemplates.length})</span>
@@ -523,11 +575,42 @@ class TemplateManager extends Component {
               )}
             </div>
 
-            {/* Right: editor + actions */}
+            {/* Right: variables panel or template editor */}
             <div className="tm-right-panel">
               <div className="tm-editor-panel">
-                {!selected ? (
-                  <div className="tm-empty" style={{ margin: 'auto' }}>Select a template to edit.</div>
+                {selectedCollectionId ? (() => {
+                  const selCol = collections.find(c => c.id === selectedCollectionId);
+                  return selCol ? (
+                    <>
+                      <div className="tm-vars-title">
+                        Variables — <span>{selCol.name}</span>
+                      </div>
+                      <div className="tm-vars-hint">
+                        Use <code>{'{{variable_name}}'}</code> in template fields. Variables are resolved when loading a template.
+                      </div>
+                      <table className="tm-vars-table">
+                        <thead>
+                          <tr>
+                            <th className="tm-vars-th">Variable</th>
+                            <th className="tm-vars-th">Value</th>
+                            <th className="tm-vars-th" style={{ width: 24 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editVariables.map((v, i) => (
+                            <tr key={v._key}>
+                              <td><input className="tm-input" placeholder="variable_name" value={v.key} onChange={e => this._updateVariable(i, 'key', e.target.value)} /></td>
+                              <td><input className="tm-input" placeholder="value" value={v.value} onChange={e => this._updateVariable(i, 'value', e.target.value)} /></td>
+                              <td><button className="tm-header-del" onClick={() => this._removeVariable(i)}>×</button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <button className="tm-add-header" onClick={this._addVariable}>+ Add Variable</button>
+                    </>
+                  ) : null;
+                })() : !selected ? (
+                  <div className="tm-empty" style={{ margin: 'auto' }}>Select a template to edit.<br />Or click a collection name to manage variables.</div>
                 ) : (
                   <>
                     <div className="tm-field-row">
@@ -593,11 +676,15 @@ class TemplateManager extends Component {
                 )}
               </div>
 
-              {selected && (
+              {(selected || selectedCollectionId) && (
                 <div className="tm-actions">
-                  <button className="tm-delete-btn" onClick={this._delete}>🗑 Delete</button>
-                  <button className={`tm-save-btn${saved ? ' tm-save-btn-ok' : ''}`} onClick={this._save}>
-                    {saved ? '✓ Saved' : '💾 Save'}
+                  {selected && <button className="tm-delete-btn" onClick={this._delete}>🗑 Delete</button>}
+                  {selectedCollectionId && <div />}
+                  <button
+                    className={`tm-save-btn${(saved || variablesSaved) ? ' tm-save-btn-ok' : ''}`}
+                    onClick={selectedCollectionId ? this._saveVariables : this._save}
+                  >
+                    {(saved || variablesSaved) ? '✓ Saved' : '💾 Save'}
                   </button>
                 </div>
               )}
