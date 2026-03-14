@@ -21,6 +21,7 @@ class TemplateManager extends Component {
     editTemplateNameId: null,
     editTemplateNameValue: '',
     editTemplateCollectionId: null,
+    headersCollapsed: false,
     editName: '',
     editUrl: '',
     editHeaders: [],
@@ -351,7 +352,7 @@ class TemplateManager extends Component {
       templates, collections, selectedId, collapsedIds,
       editCollectionId, editCollectionName, editTemplateCollectionId,
       editTemplateNameId, editTemplateNameValue,
-      editName, editUrl, editHeaders, editBody, saved, position, size,
+      editName, editUrl, editHeaders, editBody, headersCollapsed, saved, position, size,
     } = this.state;
 
     const selected = templates.find(t => t.id === selectedId);
@@ -551,17 +552,23 @@ class TemplateManager extends Component {
                       <input className="tm-input" value={editUrl} onChange={e => this.setState({ editUrl: e.target.value })} />
                     </div>
                     <div className="tm-field-row">
-                      <label className="tm-label">Headers</label>
-                      <div className="tm-headers">
-                        {editHeaders.map((h, i) => (
-                          <div key={h._key} className="tm-header-item">
-                            <input className="tm-input tm-header-key" placeholder="key" value={h.key} onChange={e => this._updateHeader(i, 'key', e.target.value)} />
-                            <input className="tm-input tm-header-val" placeholder="value" value={h.value} onChange={e => this._updateHeader(i, 'value', e.target.value)} />
-                            <button className="tm-header-del" onClick={() => this._removeHeader(i)}>×</button>
-                          </div>
-                        ))}
-                        <button className="tm-add-header" onClick={this._addHeader}>+ Add header</button>
+                      <div className="tm-collapsible-label" onClick={() => this.setState(s => ({ headersCollapsed: !s.headersCollapsed }))}>
+                        <span className="tm-collection-chevron">{headersCollapsed ? '▶' : '▼'}</span>
+                        <label className="tm-label" style={{ cursor: 'pointer' }}>Headers</label>
+                        <span className="tm-collection-count">({editHeaders.length})</span>
                       </div>
+                      {!headersCollapsed && (
+                        <div className="tm-headers">
+                          {editHeaders.map((h, i) => (
+                            <div key={h._key} className="tm-header-item">
+                              <input className="tm-input tm-header-key" placeholder="key" value={h.key} onChange={e => this._updateHeader(i, 'key', e.target.value)} />
+                              <input className="tm-input tm-header-val" placeholder="value" value={h.value} onChange={e => this._updateHeader(i, 'value', e.target.value)} />
+                              <button className="tm-header-del" onClick={() => this._removeHeader(i)}>×</button>
+                            </div>
+                          ))}
+                          <button className="tm-add-header" onClick={this._addHeader}>+ Add header</button>
+                        </div>
+                      )}
                     </div>
                     <div className="tm-field-row tm-body-row">
                       <label className="tm-label">Request body</label>
