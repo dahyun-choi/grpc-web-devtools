@@ -112,6 +112,28 @@ class RequestGenerator extends Component {
     }
   };
 
+  _reorderByProto = (messageType, obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const snakeToCamel = s => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+    const result = {};
+    const fields = messageType.fieldsArray || Object.values(messageType.fields);
+    for (const field of fields) {
+      const camelName = snakeToCamel(field.name);
+      if (!(camelName in obj)) continue;
+      try { field.resolve(); } catch (_) {}
+      const val = obj[camelName];
+      if (field.resolvedType?.fields) {
+        result[camelName] = field.repeated && Array.isArray(val)
+          ? val.map(item => this._reorderByProto(field.resolvedType, item))
+          : this._reorderByProto(field.resolvedType, val);
+      } else {
+        result[camelName] = val;
+      }
+    }
+    for (const key in obj) { if (!(key in result)) result[key] = obj[key]; }
+    return result;
+  };
+
   _applyTemplate = (template) => {
     const headers = (template.headers || []).map((h, i) => ({
       id: Date.now() + i,
@@ -123,10 +145,20 @@ class RequestGenerator extends Component {
       template.method?.endsWith(`/${m.fullPath}`) ||
       template.url?.includes(`/${m.fullPath}`)
     );
+
+    // Reorder request body to proto declaration order at load time
+    let body = template.request || {};
+    if (protoManager.isReady()) {
+      const typeInfo = protoManager.getMessageType(template.method);
+      if (typeInfo?.requestType) {
+        body = this._reorderByProto(typeInfo.requestType, body);
+      }
+    }
+
     this.setState({
       url: template.url || '',
       headers,
-      body: template.request || {},
+      body,
       selectedMethod: matched || null,
       templatesOpen: false,
       templateFilter: '',

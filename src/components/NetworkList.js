@@ -21,10 +21,12 @@ function reorderByProtoDeclaration(messageType, obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const snakeToCamel = s => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
   const result = {};
-  for (const fieldName in messageType.fields) {
-    const camelName = snakeToCamel(fieldName);
+  // fieldsArray is sorted by field number (proto declaration order).
+  // for...in on messageType.fields iterates alphabetically in protobuf.js.
+  const fields = messageType.fieldsArray || Object.values(messageType.fields);
+  for (const field of fields) {
+    const camelName = snakeToCamel(field.name);
     if (!(camelName in obj)) continue;
-    const field = messageType.fields[fieldName];
     try { field.resolve(); } catch (_) {}
     const val = obj[camelName];
     if (field.resolvedType && field.resolvedType.fields) {
