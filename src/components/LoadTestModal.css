@@ -288,3 +288,116 @@
   transition: background 0.15s;
 }
 .lt-stop-btn:hover { background: #b00000; }
+
+/* ── Mutation Rules ──────────────────────────────────────────────── */
+.lt-section {
+  border-top: 1px solid var(--divider-color);
+  padding-top: 8px;
+}
+
+.lt-section-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 6px;
+}
+
+.lt-section-chevron {
+  font-size: 8px;
+  color: var(--toolbar-color);
+  opacity: 0.5;
+  width: 10px;
+}
+
+.lt-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--toolbar-color);
+  opacity: 0.6;
+}
+
+.lt-section-count {
+  font-size: 10px;
+  color: var(--toolbar-color);
+  opacity: 0.4;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.lt-add-rule {
+  margin-left: auto;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  color: var(--toolbar-color);
+  font-size: 10px;
+  padding: 1px 7px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.lt-add-rule:hover { opacity: 1; background: var(--network-row-hover); }
+
+.lt-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.lt-rule-path {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 11px;
+  font-family: monospace;
+  outline: none;
+}
+.lt-rule-path:focus { border-color: #2196F3; }
+
+.lt-rule-type {
+  flex-shrink: 0;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.lt-rule-step {
+  width: 48px;
+  flex-shrink: 0;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 11px;
+  font-family: monospace;
+  outline: none;
+  text-align: right;
+}
+
+.lt-rule-del {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-color);
+  opacity: 0.4;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.lt-rule-del:hover { opacity: 1; color: rgb(216, 0, 0); }

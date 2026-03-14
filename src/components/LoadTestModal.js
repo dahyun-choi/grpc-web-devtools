@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { getNetworkEntry } from '../state/networkCache';
+import protoManager from '../utils/ProtoManager';
 import './LoadTestModal.css';
 
 const ALLOWED_HEADERS = [
@@ -34,6 +35,8 @@ class LoadTestModal extends Component {
     failed: 0,
     stats: null,
     statsCopied: false,
+    mutations: [],       // [{ id, path, type, step }]
+    mutationsOpen: true, // show/hide mutations section
   };
 
   _timerId = null;
@@ -46,6 +49,7 @@ class LoadTestModal extends Component {
   _latencies = [];
   _testStartTime = null;
   _testEndTime = null;
+  _incrementBases = {}; // ruleId → base value (reset on start)
 
   componentDidUpdate(prevProps) {
     // Collect latencies from newly added log entries matching our fired requestIds
@@ -99,7 +103,120 @@ class LoadTestModal extends Component {
     return raw ? { raw, fullEntry } : null;
   }
 
-  _buildFetchCode(raw, fullEntry) {
+  _getEnumValues(method, fieldPath) {
+    try {
+      const typeInfo = protoManager.getMessageType(method);
+      if (!typeInfo?.requestType) return null;
+      const parts = fieldPath.split('.');
+      let msgType = typeInfo.requestType;
+      for (let i = 0; i < parts.length; i++) {
+        const fn = parts[i];
+        const snakeFn = fn.replace(/([A-Z])/g, '_$1').toLowerCase();
+        const field = msgType.fields[fn] || msgType.fields[snakeFn] ||
+          Object.values(msgType.fields).find(f => f.name === fn || f.name === snakeFn);
+        if (!field) return null;
+        try { field.resolve(); } catch (_) {}
+        if (i === parts.length - 1) {
+          return field.resolvedType?.values ? Object.values(field.resolvedType.values) : null;
+        }
+        if (field.resolvedType?.fields) msgType = field.resolvedType;
+        else return null;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  _applyMutations(body, method) {
+    const { mutations } = this.state;
+    if (!mutations.length) return body;
+    const mutated = JSON.parse(JSON.stringify(body || {}));
+    const idx = this._firedCount; // 0-based request index
+    for (const rule of mutations) {
+      if (!rule.path || !rule.type) continue;
+      // Support array index notation: "appTypes[0]" or "appTypes[*]"
+      const rawParts = rule.path.split('.');
+      const parts = rawParts.flatMap(p => {
+        const m = p.match(/^(.+?)\[(\d+|\*)\]$/);
+        return m ? [m[1], m[2]] : [p];
+      });
+      let obj = mutated;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (obj == null) break;
+        const p = parts[i];
+        if (Array.isArray(obj) && (p === '*' || !isNaN(p))) {
+          obj = obj[p === '*' ? 0 : Number(p)];
+        } else if (typeof obj === 'object') {
+          obj = obj[p];
+        } else {
+          obj = null; break;
+        }
+      }
+      if (!obj || typeof obj !== 'object') continue;
+      const key = parts[parts.length - 1];
+      switch (rule.type) {
+        case 'increment': {
+          if (!(rule.id in this._incrementBases)) {
+            this._incrementBases[rule.id] = typeof obj[key] === 'number' ? obj[key] : 0;
+          }
+          obj[key] = this._incrementBases[rule.id] + (Number(rule.step) || 1) * idx;
+          break;
+        }
+        case 'now_ms':
+          obj[key] = Date.now();
+          break;
+        case 'now_s':
+          obj[key] = Math.floor(Date.now() / 1000);
+          break;
+        case 'enum_random': {
+          const vals = this._getEnumValues(method, rule.path);
+          if (vals?.length) {
+            if (Array.isArray(obj[key])) {
+              // Repeated enum field: randomize each element independently
+              obj[key] = obj[key].map(() => vals[Math.floor(Math.random() * vals.length)]);
+            } else {
+              obj[key] = vals[Math.floor(Math.random() * vals.length)];
+            }
+          }
+          break;
+        }
+        case 'uuid':
+          obj[key] = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+          });
+          break;
+        case 'str_increment':
+        case 'str_decrement': {
+          const val = String(obj[key] ?? '');
+          const m = val.match(/(\d+)(?=\D*$)/); // last number in string
+          if (m) {
+            if (!(rule.id in this._incrementBases)) this._incrementBases[rule.id] = Number(m[1]);
+            const step = (Number(rule.step) || 1) * idx;
+            const newNum = rule.type === 'str_increment'
+              ? this._incrementBases[rule.id] + step
+              : this._incrementBases[rule.id] - step;
+            obj[key] = val.slice(0, m.index) + newNum + val.slice(m.index + m[0].length);
+          }
+          break;
+        }
+        case 'str_random': {
+          const val = String(obj[key] ?? '');
+          const m = val.match(/(\d+)(?=\D*$)/);
+          if (m) {
+            const min = Number(rule.min) || 1;
+            const max = Number(rule.max) || 100;
+            const newNum = Math.floor(Math.random() * (max - min + 1)) + min;
+            obj[key] = val.slice(0, m.index) + newNum + val.slice(m.index + m[0].length);
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+    return mutated;
+  }
+
+  _buildFetchCode(raw, fullEntry, mutatedBodyBase64 = null, mutatedRequest = null) {
     const { method, request } = fullEntry;
     const headers = {};
     if (Array.isArray(raw.headers)) {
@@ -110,14 +227,16 @@ class LoadTestModal extends Component {
         }
       });
     }
+    const bodyBase64 = mutatedBodyBase64 || raw.body;
+    const requestData = mutatedRequest || request;
     const requestId = Math.floor(Math.random() * 1000000);
     const code = `
 (function() {
   const url = ${JSON.stringify(raw.url)};
-  const bodyBase64 = ${JSON.stringify(raw.body)};
+  const bodyBase64 = ${JSON.stringify(bodyBase64)};
   const headers = ${JSON.stringify(headers)};
   const grpcMethod = ${JSON.stringify(method)};
-  const requestData = ${JSON.stringify(request)};
+  const requestData = ${JSON.stringify(requestData)};
   const requestId = ${requestId};
 
   const binaryString = atob(bodyBase64);
@@ -151,7 +270,25 @@ class LoadTestModal extends Component {
       return;
     }
     const { raw, fullEntry } = result;
-    const { code, requestId } = this._buildFetchCode(raw, fullEntry);
+    // Apply mutation rules if any
+    let mutatedBodyBase64 = null;
+    let mutatedRequest = null;
+    if (this.state.mutations.length > 0 && protoManager.isReady()) {
+      const mutatedBody = this._applyMutations(fullEntry.request, fullEntry.method);
+      try {
+        let methodPath = fullEntry.method;
+        try { methodPath = new URL(fullEntry.method).pathname.replace(/^\//, ''); } catch (_) {}
+        const encoded = protoManager.encodeMessage(methodPath, mutatedBody);
+        if (encoded) {
+          const framed = protoManager.buildGrpcWebFrame(encoded);
+          let bin = '';
+          for (let i = 0; i < framed.length; i++) bin += String.fromCharCode(framed[i]);
+          mutatedBodyBase64 = btoa(bin);
+          mutatedRequest = mutatedBody;
+        }
+      } catch (_) {}
+    }
+    const { code, requestId } = this._buildFetchCode(raw, fullEntry, mutatedBodyBase64, mutatedRequest);
 
     this._firedTimes.set(requestId, true);
 
@@ -269,6 +406,7 @@ class LoadTestModal extends Component {
     this._totalCount = count;
     this._firedTimes.clear();
     this._latencies = [];
+    this._incrementBases = {};
     this._testStartTime = Date.now();
     this._testEndTime = null;
     this.setState({ running: true, stopped: false, fired: 0, total: count, succeeded: 0, failed: 0, stats: null }, this._scheduleNext);
@@ -283,7 +421,7 @@ class LoadTestModal extends Component {
 
   render() {
     const { onClose, log, entryId } = this.props;
-    const { count, interval, running, stopped, fired, total, succeeded, failed, stats, statsCopied } = this.state;
+    const { count, interval, running, stopped, fired, total, succeeded, failed, stats, statsCopied, mutations, mutationsOpen } = this.state;
 
     const summaryEntry = log.find(e => e.entryId === entryId);
     const methodLabel = summaryEntry?.method
@@ -330,6 +468,105 @@ class LoadTestModal extends Component {
                 disabled={running}
                 onChange={e => this.setState({ interval: e.target.value })}
               />
+            </div>
+
+            {/* Mutation Rules */}
+            <div className="lt-section">
+              <div className="lt-section-header" onClick={() => this.setState(s => ({ mutationsOpen: !s.mutationsOpen }))}>
+                <span className="lt-section-chevron">{mutationsOpen ? '▼' : '▶'}</span>
+                <span className="lt-section-title">Mutation Rules</span>
+                <span className="lt-section-count">({mutations.length})</span>
+                {!running && (
+                  <button className="lt-add-rule" onClick={e => {
+                    e.stopPropagation();
+                    this.setState(s => ({ mutationsOpen: true, mutations: [...s.mutations, { id: Date.now(), path: '', type: 'increment', step: 1 }] }));
+                  }}>+ Add</button>
+                )}
+              </div>
+              {mutationsOpen && mutations.map((rule, i) => (
+                <div key={rule.id} className="lt-rule-row">
+                  <input
+                    className="lt-rule-path"
+                    placeholder="field.path"
+                    value={rule.path}
+                    disabled={running}
+                    onChange={e => {
+                      const m = [...mutations]; m[i] = { ...m[i], path: e.target.value };
+                      this.setState({ mutations: m });
+                    }}
+                  />
+                  <select
+                    className="lt-rule-type"
+                    value={rule.type}
+                    disabled={running}
+                    onChange={e => {
+                      const m = [...mutations]; m[i] = { ...m[i], type: e.target.value };
+                      this.setState({ mutations: m });
+                    }}
+                  >
+                    <optgroup label="Integer">
+                      <option value="increment">++ Increment</option>
+                    </optgroup>
+                    <optgroup label="String (last number)">
+                      <option value="str_increment">str ++</option>
+                      <option value="str_decrement">str --</option>
+                      <option value="str_random">str random</option>
+                    </optgroup>
+                    <optgroup label="Time">
+                      <option value="now_ms">now() ms</option>
+                      <option value="now_s">now() s</option>
+                    </optgroup>
+                    <optgroup label="Other">
+                      <option value="enum_random">Enum Random</option>
+                      <option value="uuid">UUID</option>
+                    </optgroup>
+                  </select>
+                  {['increment', 'str_increment', 'str_decrement'].includes(rule.type) && (
+                    <input
+                      className="lt-rule-step"
+                      type="number"
+                      placeholder="step"
+                      value={rule.step ?? 1}
+                      disabled={running}
+                      onChange={e => {
+                        const m = [...mutations]; m[i] = { ...m[i], step: e.target.value };
+                        this.setState({ mutations: m });
+                      }}
+                    />
+                  )}
+                  {rule.type === 'str_random' && (
+                    <>
+                      <input
+                        className="lt-rule-step"
+                        type="number"
+                        placeholder="min"
+                        value={rule.min ?? 1}
+                        disabled={running}
+                        onChange={e => {
+                          const m = [...mutations]; m[i] = { ...m[i], min: e.target.value };
+                          this.setState({ mutations: m });
+                        }}
+                      />
+                      <input
+                        className="lt-rule-step"
+                        type="number"
+                        placeholder="max"
+                        value={rule.max ?? 100}
+                        disabled={running}
+                        onChange={e => {
+                          const m = [...mutations]; m[i] = { ...m[i], max: e.target.value };
+                          this.setState({ mutations: m });
+                        }}
+                      />
+                    </>
+                  )}
+                  {!running && (
+                    <button className="lt-rule-del" onClick={() => {
+                      this.setState(s => ({ mutations: s.mutations.filter((_, j) => j !== i) }));
+                    }}>×</button>
+                  )}
+                </div>
+              ))}
             </div>
 
             {/* Progress */}
