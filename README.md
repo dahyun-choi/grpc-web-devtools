@@ -229,6 +229,16 @@ Save, organize, and send gRPC requests as reusable templates.
 - **Import** — merge templates from a JSON file (duplicates skipped)
 - All data persisted in `chrome.storage.local`
 
+### Pinned Requests
+
+Pin important gRPC requests to keep them visible at the top of the list at all times.
+
+- **Right-click** any row → **📌 Pin** to add it to the Pinned section
+- **Right-click** a pinned row → **📌 Unpin** to remove it
+- Pinned requests appear in a dedicated **Pinned** section above the main list with a blue tint
+- Pinned entries survive **Clear** — they are not removed when the log is cleared
+- Pinned entries (including full request/response body) are persisted in `chrome.storage.local` and restored when DevTools reopens
+
 ### Load Test
 
 Replay a captured request repeatedly to stress-test an endpoint.
