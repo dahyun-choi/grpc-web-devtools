@@ -10,7 +10,8 @@ import NetworkListRow from './NetworkListRow';
 import LoadTestModal from './LoadTestModal';
 import ScenarioModal from './ScenarioModal';
 import { getNetworkEntry } from '../state/networkCache';
-import { selectLogEntry, setPendingAction } from '../state/network';
+import { selectLogEntry, setPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries } from '../state/network';
+import { restoreNetworkEntry } from '../state/networkCache';
 import protoManager from '../utils/ProtoManager';
 
 import './NetworkList.css';
@@ -357,6 +358,8 @@ class NetworkList extends Component {
     this.handleScenarioClear = this.handleScenarioClear.bind(this);
     this.handleScenarioReorder = this.handleScenarioReorder.bind(this);
     this.handleSaveAsTemplate = this.handleSaveAsTemplate.bind(this);
+    this.handlePin = this.handlePin.bind(this);
+    this.handleUnpin = this.handleUnpin.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -373,9 +376,16 @@ class NetworkList extends Component {
     document.addEventListener('mouseup', this._mdEnd);
     // Restore column visibility from storage
     if (chrome?.storage?.local) {
-      chrome.storage.local.get(['grpc_devtools_column_visibility_v1'], (result) => {
-        const saved = result['grpc_devtools_column_visibility_v1'];
-        if (saved) this.setState({ columnVisibility: { ...this.state.columnVisibility, ...saved } });
+      chrome.storage.local.get(['grpc_devtools_column_visibility_v1', 'grpc_devtools_pinned_v1'], (result) => {
+        const savedVis = result['grpc_devtools_column_visibility_v1'];
+        if (savedVis) this.setState({ columnVisibility: { ...this.state.columnVisibility, ...savedVis } });
+
+        // Restore pinned entries
+        const savedPinned = result['grpc_devtools_pinned_v1'];
+        if (savedPinned?.length) {
+          savedPinned.forEach(({ fullEntry }) => { if (fullEntry) restoreNetworkEntry(fullEntry); });
+          this.props.setPinnedEntries(savedPinned.map(({ summary }) => summary));
+        }
       });
     }
   }
@@ -566,6 +576,20 @@ class NetworkList extends Component {
     });
   }
 
+  handlePin(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState({ contextMenu: { ...this.state.contextMenu, visible: false } });
+    this.props.pinEntry(entryId);
+  }
+
+  handleUnpin(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState({ contextMenu: { ...this.state.contextMenu, visible: false } });
+    this.props.unpinEntry(entryId);
+  }
+
   handleColumnHeaderMenu = (e) => {
     e.preventDefault();
     this.setState({ colMenu: { visible: true, x: e.clientX, y: e.clientY } });
@@ -641,6 +665,23 @@ class NetworkList extends Component {
     });
   }
 
+  _formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+  }
+
+  _formatDuration(ms) {
+    if (ms == null) return '';
+    return ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(2)}s`;
+  }
+
+  _formatCode(code) {
+    if (code == null) return '';
+    const names = {0:'OK',1:'CANCELLED',2:'UNKNOWN',3:'INVALID_ARGUMENT',4:'DEADLINE_EXCEEDED',5:'NOT_FOUND',6:'ALREADY_EXISTS',7:'PERMISSION_DENIED',8:'RESOURCE_EXHAUSTED',9:'FAILED_PRECONDITION',10:'ABORTED',11:'OUT_OF_RANGE',12:'UNIMPLEMENTED',13:'INTERNAL',14:'UNAVAILABLE',15:'DATA_LOSS',16:'UNAUTHENTICATED'};
+    return names[code] || String(code);
+  }
+
   getItemData() {
     const { log } = this.props.network;
     const { scenarioEntryIds, colWidths, columnVisibility } = this.state;
@@ -668,6 +709,7 @@ class NetworkList extends Component {
     if (schemaPos) { schemaStyle.position = 'fixed'; schemaStyle.left = schemaPos.x; schemaStyle.top = schemaPos.y; schemaStyle.margin = 0; }
     if (schemaSize) { schemaStyle.width = schemaSize.width; schemaStyle.maxWidth = 'none'; schemaStyle.height = schemaSize.height; schemaStyle.maxHeight = 'none'; }
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
+    const isPinned = network.pinnedEntries.some(e => e.entryId === contextMenu.entryId);
 
     return (
       <div className="widget vbox network-list">
@@ -700,7 +742,36 @@ class NetworkList extends Component {
                 </tbody>
               </table>
             </div>
-            <div className="data-container">
+            {/* Pinned section */}
+            {network.pinnedEntries.length > 0 && (
+              <div className="pinned-section">
+                <div className="pinned-section-header">
+                  📌 Pinned <span className="pinned-count">({network.pinnedEntries.length})</span>
+                </div>
+                {network.pinnedEntries.map(entry => {
+                  const isSelected = network.selectedEntry?.entryId === entry.entryId;
+                  const hasError = entry.error || (entry.statusCode != null && entry.statusCode !== 0);
+                  return (
+                    <div
+                      key={entry.entryId}
+                      className={`data-row pinned-row${isSelected ? ' selected' : ''}${hasError ? ' error' : ''}`}
+                      onClick={() => this.props.selectPinnedEntry(entry.entryId)}
+                      onContextMenu={e => { e.preventDefault(); this.handleContextMenu(e, entry.entryId); }}
+                    >
+                      {columnVisibility.time && <span className="time-cell" style={{ width: colWidths.time - 5 }}>{this._formatTime(entry.timestamp)}</span>}
+                      <span className="name-cell">
+                        <span style={{ fontSize: 9, marginRight: 4, opacity: 0.7 }}>📌</span>
+                        {entry.endpoint}
+                      </span>
+                      {columnVisibility.code && <span className={`code-cell ${hasError ? 'error-code' : 'ok-code'}`} style={{ width: colWidths.code }}>{this._formatCode(entry.statusCode)}</span>}
+                      {columnVisibility.duration && <span className="duration-cell" style={{ width: colWidths.duration - 4 }}>{this._formatDuration(entry.duration)}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="data-container" style={{ top: 27 + (network.pinnedEntries.length > 0 ? 22 + network.pinnedEntries.length * 21 : 0) }}>
               <AutoSizer disableWidth>
                 {({ height }) => (
                   <List
@@ -772,6 +843,11 @@ class NetworkList extends Component {
               <button className="grpc-context-menu-item" onClick={this.handleSaveAsTemplate}>
                 💾 Save as Template
               </button>
+              <div className="grpc-context-menu-divider" />
+              {isPinned
+                ? <button className="grpc-context-menu-item" onClick={this.handleUnpin}>📌 Unpin</button>
+                : <button className="grpc-context-menu-item" onClick={this.handlePin}>📌 Pin</button>
+              }
             </div>
           )}
 
@@ -915,5 +991,5 @@ class NetworkList extends Component {
 }
 
 const mapStateToProps = state => ({ network: state.network, globalSearchValue: state.toolbar.globalSearchValue });
-const mapDispatchToProps = { selectLogEntry, setPendingAction };
+const mapDispatchToProps = { selectLogEntry, setPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries };
 export default connect(mapStateToProps, mapDispatchToProps)(NetworkList);

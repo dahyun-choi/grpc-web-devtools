@@ -10,7 +10,7 @@ import networkReducer, { logNetworkEntry, clearLogAndCache, setEntryDuration, ne
 import toolbarReducer, { setSplitPanel, setFieldInspector, setFastRender } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import protoManager from './utils/ProtoManager';
-import { getAllNetworkEntries } from './state/networkCache';
+import { getAllNetworkEntries, restoreNetworkEntry, getNetworkEntry } from './state/networkCache';
 import DebuggerCapture from './utils/DebuggerCapture';
 
 var port, tabId
@@ -183,6 +183,27 @@ store.subscribe(() => {
   if (chrome?.storage?.local) {
     chrome.storage.local.set({ [UI_SETTINGS_KEY]: next });
   }
+});
+
+// ── Pinned entries persistence ────────────────────────────────────────────────
+const PINNED_KEY = 'grpc_devtools_pinned_v1';
+window.__GRPCWEB_DEVTOOLS_PINNED_KEY__ = PINNED_KEY;
+
+// Save pinned entries whenever they change.
+// Skip saving when pinnedEntries is empty AND _prevPinned is null (initial state before
+// componentDidMount loads from storage) to prevent overwriting stored data.
+let _prevPinned = null;
+store.subscribe(() => {
+  const { pinnedEntries } = store.getState().network;
+  if (pinnedEntries === _prevPinned) return;
+  if (pinnedEntries.length === 0 && _prevPinned === null) return; // not yet loaded
+  _prevPinned = pinnedEntries;
+  if (!chrome?.storage?.local) return;
+  const payload = pinnedEntries.map(summary => ({
+    summary,
+    fullEntry: getNetworkEntry(summary.entryId) || null,
+  }));
+  chrome.storage.local.set({ [PINNED_KEY]: payload });
 });
 
 // Store raw HTTP requests for repeat functionality

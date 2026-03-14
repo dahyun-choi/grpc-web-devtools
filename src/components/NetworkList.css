@@ -535,3 +535,44 @@
   pointer-events: none;
   opacity: 0.92;
 }
+
+/* ── Pinned section ───────────────────────────────────────────────── */
+.pinned-section {
+  position: absolute;
+  top: 27px;
+  left: 0;
+  right: 0;
+  background: var(--network-bg);
+  border-bottom: 2px solid var(--divider-color);
+  z-index: 2;
+}
+
+.pinned-section-header {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--toolbar-color);
+  background: var(--toolbar-bg-color);
+  border-bottom: 1px solid var(--divider-color);
+  user-select: none;
+}
+
+.pinned-count {
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.pinned-row {
+  background: rgba(33, 150, 243, 0.05);
+}
+
+.pinned-row:hover {
+  background: rgba(33, 150, 243, 0.12) !important;
+}
+
+.pinned-row.selected {
+  background: var(--selection-bg-color) !important;
+  color: var(--selection-fg-color);
+}

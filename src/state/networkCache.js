@@ -165,6 +165,12 @@ export function clearNetworkCache() {
   methodToStreamEntryId.clear();
 }
 
+export function restoreNetworkEntry(entry) {
+  if (!entry || !entry.entryId) return;
+  cache.set(entry.entryId, entry);
+  if (!order.includes(entry.entryId)) order.push(entry.entryId);
+}
+
 export function getAllNetworkEntries() {
   return Array.from(cache.values());
 }

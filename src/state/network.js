@@ -3,7 +3,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import Fuse from 'fuse.js';
 import { setFilterValue, setGlobalSearchValue } from "./toolbar";
-import { addNetworkEntry, clearNetworkCache, getNetworkEntry } from "./networkCache";
+import { addNetworkEntry, clearNetworkCache, getNetworkEntry, restoreNetworkEntry } from "./networkCache";
 
 var options = {
   shouldSort: false,
@@ -27,6 +27,7 @@ const networkSlice = createSlice({
     _globalSearchValue: '',
     _logBakBeforeGlobalSearch: [],
     pendingAction: null, // { type: 'repeat' | 'edit', entryId }
+    pinnedEntries: [],   // [summary] — persists through clearLog
   },
   reducers: {
     networkLog(state, action) {
@@ -93,6 +94,24 @@ const networkSlice = createSlice({
     clearPendingAction(state) {
       state.pendingAction = null;
     },
+    pinEntry(state, action) {
+      const entryId = action.payload;
+      if (state.pinnedEntries.find(e => e.entryId === entryId)) return;
+      const entry = state.log.find(e => e.entryId === entryId);
+      if (entry) state.pinnedEntries.push({ ...entry, isPinned: true });
+    },
+    unpinEntry(state, action) {
+      const entryId = action.payload;
+      state.pinnedEntries = state.pinnedEntries.filter(e => e.entryId !== entryId);
+    },
+    selectPinnedEntry(state, action) {
+      const entryId = action.payload;
+      const entry = state.pinnedEntries.find(e => e.entryId === entryId);
+      if (entry) { state.selectedIdx = null; state.selectedEntry = entry; }
+    },
+    setPinnedEntries(state, action) {
+      state.pinnedEntries = action.payload;
+    },
     setEntryDuration(state, action) {
       const { entryId, duration } = action.payload;
       const entry = state.log.find(e => e.entryId === entryId);
@@ -142,7 +161,7 @@ const networkSlice = createSlice({
 });
 
 const { actions, reducer } = networkSlice;
-export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration, setPendingAction, clearPendingAction } = actions;
+export const { networkLog, selectLogEntry, clearLog, setPreserveLog, setEntryDuration, setPendingAction, clearPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries } = actions;
 
 export function buildSummaryEntry(entry) {
   // Extract status code from error
@@ -217,9 +236,16 @@ export const logNetworkEntry = (data) => (dispatch) => {
   return fullEntry; // Return for linking with raw cache
 };
 
-export const clearLogAndCache = (payload) => (dispatch) => {
+export const clearLogAndCache = (payload) => (dispatch, getState) => {
+  // Save full data for pinned entries before clearing cache
+  const { pinnedEntries } = getState().network;
+  const pinnedFullData = pinnedEntries.map(e => getNetworkEntry(e.entryId)).filter(Boolean);
+
   clearNetworkCache();
   dispatch(clearLog(payload));
+
+  // Restore pinned entries' full data to cache so details still work
+  pinnedFullData.forEach(restoreNetworkEntry);
 
   // Clear raw requests cache (both memory and storage)
   if (window.__GRPCWEB_DEVTOOLS_CLEAR_RAW_CACHE__) {
