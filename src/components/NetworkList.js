@@ -13,6 +13,7 @@ import { getNetworkEntry } from '../state/networkCache';
 import { selectLogEntry, setPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries } from '../state/network';
 import { restoreNetworkEntry } from '../state/networkCache';
 import protoManager from '../utils/ProtoManager';
+import RepeatIcon from '../icons/Repeat';
 
 import './NetworkList.css';
 import './ScenarioModal.css';
@@ -238,6 +239,7 @@ function buildSchemaLines(method, typeInfo) {
 class NetworkList extends Component {
   _grpcurlModalRef = React.createRef();
   _schemaModalRef = React.createRef();
+  _contextMenuRef = React.createRef();
   _tooltipHideTimer = null;
 
   _showSchemaTooltip = (text, x, y) => {
@@ -411,9 +413,13 @@ class NetworkList extends Component {
   handleContextMenu(e, entryId) {
     e.preventDefault();
     e.stopPropagation();
-    this.setState({
-      contextMenu: { visible: true, x: e.clientX, y: e.clientY, entryId },
-    });
+    const MENU_H = 300; // estimated max menu height
+    const MENU_W = 200; // estimated max menu width
+    const x = Math.min(e.clientX, window.innerWidth - MENU_W - 4);
+    const y = e.clientY + MENU_H > window.innerHeight
+      ? Math.max(4, e.clientY - MENU_H)
+      : e.clientY;
+    this.setState({ contextMenu: { visible: true, x, y, entryId } });
   }
 
   hideContextMenu() {
@@ -817,11 +823,12 @@ class NetworkList extends Component {
           {contextMenu.visible && (
             <div
               className="grpc-context-menu"
+              ref={this._contextMenuRef}
               style={{ top: contextMenu.y, left: contextMenu.x }}
               onClick={e => e.stopPropagation()}
             >
               <button className="grpc-context-menu-item" onClick={this.handleRepeat}>
-                Repeat
+                <span className="ctx-icon"><RepeatIcon /></span>Repeat
               </button>
               <button className="grpc-context-menu-item" onClick={this.handleEditRepeat}>
                 Edit &amp; Repeat
