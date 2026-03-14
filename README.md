@@ -239,6 +239,21 @@ Pin important gRPC requests to keep them visible at the top of the list at all t
 - Pinned entries survive **Clear** — they are not removed when the log is cleared
 - Pinned entries (including full request/response body) are persisted in `chrome.storage.local` and restored when DevTools reopens
 
+### Compare (Diff)
+
+Compare any two captured gRPC requests side by side using a unified diff view.
+
+- **Right-click** any row → **⇄ Diff A** to set the first entry for comparison
+- **Right-click** another row → **⇄ Diff B** to set the second entry
+- A **Diff bar** appears at the bottom showing the queued entries — click **Compare →** to open the diff modal
+- **⇄ Remove A/B from Diff** removes an entry from the queue
+- The **Diff modal**:
+  - Switch between **Request** and **Response** tabs
+  - Unified diff view: red lines (−) are from A, green lines (+) are from B
+  - Shows **"No differences"** when the two entries are identical
+  - Draggable header and resizable (bottom-right handle)
+- Click **✕** in the Diff bar to clear the queue
+
 ### Load Test
 
 Replay a captured request repeatedly to stress-test an endpoint.
