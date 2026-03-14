@@ -16,6 +16,31 @@ import protoManager from '../utils/ProtoManager';
 import './NetworkList.css';
 import './ScenarioModal.css';
 
+// ── Proto field order helper ─────────────────────────────────────────────────
+function reorderByProtoDeclaration(messageType, obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const snakeToCamel = s => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+  const result = {};
+  for (const fieldName in messageType.fields) {
+    const camelName = snakeToCamel(fieldName);
+    if (!(camelName in obj)) continue;
+    const field = messageType.fields[fieldName];
+    try { field.resolve(); } catch (_) {}
+    const val = obj[camelName];
+    if (field.resolvedType && field.resolvedType.fields) {
+      if (field.repeated && Array.isArray(val)) {
+        result[camelName] = val.map(item => reorderByProtoDeclaration(field.resolvedType, item));
+      } else {
+        result[camelName] = reorderByProtoDeclaration(field.resolvedType, val);
+      }
+    } else {
+      result[camelName] = val;
+    }
+  }
+  for (const key in obj) { if (!(key in result)) result[key] = obj[key]; }
+  return result;
+}
+
 // ── grpcurl command builder ──────────────────────────────────────────────────
 
 function buildGrpcurlCommand(summaryEntry, fullEntry) {
@@ -511,13 +536,22 @@ class NetworkList extends Component {
     let name = summaryEntry.method || 'template';
     try { name = new URL(summaryEntry.method).pathname.split('/').filter(Boolean).pop() || name; } catch (_) { name = String(name).split('/').pop() || name; }
 
+    // Reorder request fields to match proto declaration order
+    let requestBody = fullEntry.request ?? {};
+    if (protoManager.isReady()) {
+      const typeInfo = protoManager.getMessageType(summaryEntry.method);
+      if (typeInfo?.requestType) {
+        requestBody = reorderByProtoDeclaration(typeInfo.requestType, requestBody);
+      }
+    }
+
     const newTemplate = {
       id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name,
       method: summaryEntry.method || '',
       url,
       headers,
-      request: fullEntry.request ?? {},
+      request: requestBody,
       savedAt: Date.now(),
     };
 
