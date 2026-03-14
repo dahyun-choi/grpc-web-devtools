@@ -200,6 +200,20 @@ Build and send a brand-new gRPC request directly from the DevTools panel without
 - State is preserved when the modal is closed; **Clear** button resets all fields
 - Requires proto files to be uploaded in Settings
 
+### Request Templates
+
+Save frequently used gRPC requests as templates and reload them in the Request Generator.
+
+- **Right-click** any row in the request list → **💾 Save as Template** to save the request's URL, headers, and body
+- Field order in the saved body matches the proto declaration order
+- In the **Request Generator**, click **Templates** to open the template panel:
+  - Filter saved templates by name or method
+  - Click a template to instantly load its URL, headers, and body into the generator fields
+  - **×** button to delete an individual template
+- **Export** — download all templates as `grpc-templates.json` for backup
+- **Import** — load templates from a JSON file; duplicates are skipped automatically
+- Templates are persisted in `chrome.storage.local` and survive page reloads
+
 ### Load Test
 
 Replay a captured request repeatedly to stress-test an endpoint.
