@@ -484,3 +484,48 @@
   vertical-align: middle;
 }
 .tm-vars-table td:last-child { padding-right: 0; }
+
+/* ── Variable autocomplete dropdown ──────────────────────────────── */
+.tm-input-var-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.tm-input-var-wrap .tm-input {
+  width: 100%;
+}
+
+.tm-var-suggest {
+  background: var(--toolbar-bg-color);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.tm-var-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.tm-var-suggest-item:hover,
+.tm-var-suggest-item-active { background: var(--network-row-hover); }
+
+.tm-var-key {
+  font-family: monospace;
+  font-size: 11px;
+  color: #2196F3;
+  flex-shrink: 0;
+}
+
+.tm-var-val {
+  color: var(--toolbar-color);
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,6 +1,7 @@
 /* global chrome */
 
 import React, { Component } from 'react';
+import ReactDOM from 'react-dom';
 import ReactJson from 'react-json-view';
 import { connect } from 'react-redux';
 import { setTemplateManagerOpen } from '../state/toolbar';
@@ -26,6 +27,8 @@ class TemplateManager extends Component {
     editTemplateNameValue: '',
     editTemplateCollectionId: null,
     headersCollapsed: false,
+    varSuggest: null,          // { field, idx, filter, rect, bodyEl? }
+    varSuggestHighlight: -1,   // highlighted index in dropdown
     editName: '',
     editUrl: '',
     editHeaders: [],
@@ -46,12 +49,15 @@ class TemplateManager extends Component {
     document.addEventListener('mousemove', this._onDragMove);
     document.addEventListener('mouseup', this._onDragEnd);
     document.addEventListener('dragend', this._onTemplateDragEnd);
+    // capture=true: intercept keydown before react-json-view's textarea handles it
+    document.addEventListener('keydown', this._onDocKeyDown, true);
   }
 
   componentWillUnmount() {
     document.removeEventListener('mousemove', this._onDragMove);
     document.removeEventListener('mouseup', this._onDragEnd);
     document.removeEventListener('dragend', this._onTemplateDragEnd);
+    document.removeEventListener('keydown', this._onDocKeyDown, true);
   }
 
   componentDidUpdate(prevProps) {
@@ -224,6 +230,99 @@ class TemplateManager extends Component {
     }
   };
 
+  // ── Variable autocomplete ─────────────────────────────────────────
+
+  _checkVarSuggest = (value, field, idx = null, inputEl = null) => {
+    const match = value.match(/\{\{([^}]*)$/);
+    if (match) {
+      const rect = inputEl ? inputEl.getBoundingClientRect() : null;
+      this.setState({ varSuggest: { field, idx, filter: match[1].toLowerCase(), rect, bodyEl: field === 'body' ? inputEl : null }, varSuggestHighlight: -1 });
+    } else {
+      this.setState(s => s.varSuggest ? { varSuggest: null, varSuggestHighlight: -1 } : null);
+    }
+  };
+
+  _getFilteredVars = () => {
+    const { varSuggest, collections, editTemplateCollectionId } = this.state;
+    if (!varSuggest) return [];
+    const col = editTemplateCollectionId ? collections.find(c => c.id === editTemplateCollectionId) : null;
+    const vars = (col?.variables || []).filter(v => v.key);
+    return varSuggest.filter ? vars.filter(v => v.key.toLowerCase().includes(varSuggest.filter)) : vars;
+  };
+
+  // capture-phase listener: handles arrow/enter/esc for body (react-json-view intercepts bubbling)
+  _onDocKeyDown = (e) => {
+    const { varSuggest, varSuggestHighlight } = this.state;
+    if (!varSuggest || varSuggest.field !== 'body') return;
+    const filtered = this._getFilteredVars();
+    if (filtered.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation();
+      this.setState({ varSuggestHighlight: Math.min(varSuggestHighlight + 1, filtered.length - 1) });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      this.setState({ varSuggestHighlight: Math.max(varSuggestHighlight - 1, 0) });
+    } else if (e.key === 'Enter' && varSuggestHighlight >= 0) {
+      e.preventDefault(); e.stopPropagation();
+      this._selectVarSuggestion(filtered[varSuggestHighlight].key);
+    } else if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      this.setState({ varSuggest: null, varSuggestHighlight: -1 });
+    }
+  };
+
+  _onVarSuggestKeyDown = (e, filteredVars) => {
+    const { varSuggest, varSuggestHighlight } = this.state;
+    if (!varSuggest || filteredVars.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.setState({ varSuggestHighlight: Math.min(varSuggestHighlight + 1, filteredVars.length - 1) });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.setState({ varSuggestHighlight: Math.max(varSuggestHighlight - 1, 0) });
+    } else if (e.key === 'Enter' && varSuggestHighlight >= 0) {
+      e.preventDefault();
+      this._selectVarSuggestion(filteredVars[varSuggestHighlight].key);
+    } else if (e.key === 'Escape') {
+      this.setState({ varSuggest: null, varSuggestHighlight: -1 });
+    }
+  };
+
+  _onBodyKeyUp = (e) => {
+    if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(e.key)) return;
+    const el = e.target;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    this._checkVarSuggest(el.value, 'body', null, el);
+  };
+
+  _selectVarSuggestion = (varKey) => {
+    const { varSuggest } = this.state;
+    if (!varSuggest) return;
+    const { field, idx } = varSuggest;
+    const replace = (val) => val.replace(/\{\{([^}]*)$/, `{{${varKey}}}`);
+    if (field === 'url') {
+      this.setState({ editUrl: replace(this.state.editUrl), varSuggest: null, varSuggestHighlight: -1 });
+    } else if (field === 'hval') {
+      const editHeaders = [...this.state.editHeaders];
+      editHeaders[idx] = { ...editHeaders[idx], value: replace(editHeaders[idx].value) };
+      this.setState({ editHeaders, varSuggest: null, varSuggestHighlight: -1 });
+    } else if (field === 'body') {
+      const el = varSuggest.bodyEl;
+      if (el) {
+        el.focus();
+        const val = el.value;
+        const pos = el.selectionStart ?? val.length;
+        const before = val.slice(0, pos);
+        const match = before.match(/\{\{([^}]*)$/);
+        if (match) {
+          el.setSelectionRange(pos - match[0].length, pos);
+          document.execCommand('insertText', false, `{{${varKey}}}`);
+        }
+      }
+      this.setState({ varSuggest: null, varSuggestHighlight: -1 });
+    }
+  };
+
   _toggleCollapse = (id) => {
     const collapsedIds = new Set(this.state.collapsedIds);
     if (collapsedIds.has(id)) collapsedIds.delete(id);
@@ -296,7 +395,8 @@ class TemplateManager extends Component {
 
   _export = () => {
     const { templates, collections } = this.state;
-    if (!templates.length) return;
+    if (!templates.length && !collections.length) return;
+
     const json = JSON.stringify({ version: 2, collections, templates }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -407,11 +507,20 @@ class TemplateManager extends Component {
       selectedCollectionId, editVariables, variablesSaved,
       editCollectionId, editCollectionName, editTemplateCollectionId,
       editTemplateNameId, editTemplateNameValue,
-      editName, editUrl, editHeaders, editBody, headersCollapsed, saved, position, size,
+      editName, editUrl, editHeaders, editBody, headersCollapsed, varSuggest, varSuggestHighlight, saved, position, size,
     } = this.state;
 
     const selected = templates.find(t => t.id === selectedId);
     const uncategorized = templates.filter(t => !t.collectionId);
+
+    // Variables available for autocomplete (from the template's collection)
+    const currentCol = editTemplateCollectionId
+      ? collections.find(c => c.id === editTemplateCollectionId)
+      : null;
+    const currentVars = (currentCol?.variables || []).filter(v => v.key);
+    const filteredVars = varSuggest
+      ? currentVars.filter(v => !varSuggest.filter || v.key.toLowerCase().includes(varSuggest.filter))
+      : [];
     const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
 
     const modalStyle = {};
@@ -419,6 +528,7 @@ class TemplateManager extends Component {
     if (size) { modalStyle.width = size.width; if (position) modalStyle.height = size.height; }
 
     return (
+      <>
       <div className="tm-overlay">
         <div className="tm-modal" ref={this._modalRef} style={modalStyle} onClick={e => e.stopPropagation()}>
 
@@ -639,7 +749,15 @@ class TemplateManager extends Component {
                     </div>
                     <div className="tm-field-row">
                       <label className="tm-label">URL</label>
-                      <input className="tm-input" value={editUrl} onChange={e => this.setState({ editUrl: e.target.value })} />
+                      <div className="tm-input-var-wrap">
+                        <input
+                          className="tm-input"
+                          value={editUrl}
+                          onChange={e => { this.setState({ editUrl: e.target.value }); this._checkVarSuggest(e.target.value, 'url', null, e.target); }}
+                          onKeyDown={e => this._onVarSuggestKeyDown(e, filteredVars)}
+                          onBlur={() => setTimeout(() => this.setState({ varSuggest: null, varSuggestHighlight: -1 }), 150)}
+                        />
+                      </div>
                     </div>
                     <div className="tm-field-row">
                       <div className="tm-collapsible-label" onClick={() => this.setState(s => ({ headersCollapsed: !s.headersCollapsed }))}>
@@ -652,7 +770,16 @@ class TemplateManager extends Component {
                           {editHeaders.map((h, i) => (
                             <div key={h._key} className="tm-header-item">
                               <input className="tm-input tm-header-key" placeholder="key" value={h.key} onChange={e => this._updateHeader(i, 'key', e.target.value)} />
-                              <input className="tm-input tm-header-val" placeholder="value" value={h.value} onChange={e => this._updateHeader(i, 'value', e.target.value)} />
+                              <div className="tm-input-var-wrap" style={{ flex: 1 }}>
+                                <input
+                                  className="tm-input tm-header-val"
+                                  placeholder="value"
+                                  value={h.value}
+                                  onChange={e => { this._updateHeader(i, 'value', e.target.value); this._checkVarSuggest(e.target.value, 'hval', i, e.target); }}
+                                  onKeyDown={e => this._onVarSuggestKeyDown(e, filteredVars)}
+                                  onBlur={() => setTimeout(() => this.setState({ varSuggest: null, varSuggestHighlight: -1 }), 150)}
+                                />
+                              </div>
                               <button className="tm-header-del" onClick={() => this._removeHeader(i)}>×</button>
                             </div>
                           ))}
@@ -662,7 +789,7 @@ class TemplateManager extends Component {
                     </div>
                     <div className="tm-field-row tm-body-row">
                       <label className="tm-label">Request body</label>
-                      <div className="tm-body-viewer">
+                      <div className="tm-body-viewer" onKeyUp={this._onBodyKeyUp} onKeyDown={e => this._onVarSuggestKeyDown(e, filteredVars)}>
                         <ReactJson
                           key={selectedId}
                           name={false}
@@ -701,6 +828,34 @@ class TemplateManager extends Component {
           <div className="tm-resize-handle" onMouseDown={this._onResizeStart} />
         </div>
       </div>
+
+      {/* Variable autocomplete — portal to escape overflow clipping */}
+      {varSuggest && filteredVars.length > 0 && varSuggest.rect && ReactDOM.createPortal(
+        <div
+          className="tm-var-suggest"
+          style={{
+            position: 'fixed',
+            top: varSuggest.rect.bottom + 2,
+            left: varSuggest.rect.left,
+            width: Math.max(varSuggest.rect.width, 220),
+            zIndex: 99999,
+          }}
+        >
+          {filteredVars.map((v, i) => (
+            <div
+              key={v.key}
+              className={`tm-var-suggest-item${i === varSuggestHighlight ? ' tm-var-suggest-item-active' : ''}`}
+              onMouseDown={e => { e.preventDefault(); this._selectVarSuggestion(v.key); }}
+              onMouseEnter={() => this.setState({ varSuggestHighlight: i })}
+            >
+              <code className="tm-var-key">{'{{' + v.key + '}}'}</code>
+              <span className="tm-var-val">{v.value}</span>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+      </>
     );
   }
 }
