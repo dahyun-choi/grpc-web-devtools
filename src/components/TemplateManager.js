@@ -18,6 +18,8 @@ class TemplateManager extends Component {
 
     editCollectionId: null,
     editCollectionName: '',
+    editTemplateNameId: null,
+    editTemplateNameValue: '',
     editTemplateCollectionId: null,
     editName: '',
     editUrl: '',
@@ -146,6 +148,28 @@ class TemplateManager extends Component {
     this.setState({ collections: updated, editCollectionId: null, editCollectionName: '' });
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ [COLLECTIONS_KEY]: updated });
+    }
+  };
+
+  _startRenameTemplate = (t, e) => {
+    e.stopPropagation();
+    this.setState({ editTemplateNameId: t.id, editTemplateNameValue: t.name });
+  };
+
+  _commitRenameTemplate = () => {
+    const { editTemplateNameId, editTemplateNameValue, templates } = this.state;
+    if (!editTemplateNameId) return;
+    const trimmed = editTemplateNameValue.trim();
+    const updated = templates.map(t =>
+      t.id !== editTemplateNameId ? t : { ...t, name: trimmed || t.name }
+    );
+    this.setState({ templates: updated, editTemplateNameId: null, editTemplateNameValue: '' });
+    // Sync right panel name if this is the selected template
+    if (this.state.selectedId === editTemplateNameId) {
+      this.setState({ editName: trimmed || this.state.editName });
+    }
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ [STORAGE_KEY]: updated });
     }
   };
 
@@ -326,6 +350,7 @@ class TemplateManager extends Component {
     const {
       templates, collections, selectedId, collapsedIds,
       editCollectionId, editCollectionName, editTemplateCollectionId,
+      editTemplateNameId, editTemplateNameValue,
       editName, editUrl, editHeaders, editBody, saved, position, size,
     } = this.state;
 
@@ -383,12 +408,27 @@ class TemplateManager extends Component {
                       {uncategorized.map(t => (
                         <div key={t.id}
                           className={`tm-list-item${t.id === selectedId ? ' tm-list-item-selected' : ''}`}
-                          draggable
+                          draggable={editTemplateNameId !== t.id}
                           onDragStart={e => this._onTemplateDragStart(t.id, e)}
                           onDragEnd={this._onTemplateDragEnd}
                           onDragOver={e => e.preventDefault()}
                           onClick={() => this._select(t)}>
-                          <div className="tm-list-name">{t.name}</div>
+                          {editTemplateNameId === t.id ? (
+                            <input
+                              className="tm-collection-rename-input"
+                              value={editTemplateNameValue}
+                              autoFocus
+                              onChange={e => this.setState({ editTemplateNameValue: e.target.value })}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') this._commitRenameTemplate();
+                                if (e.key === 'Escape') this.setState({ editTemplateNameId: null });
+                              }}
+                              onBlur={this._commitRenameTemplate}
+                              onClick={e => e.stopPropagation()}
+                            />
+                          ) : (
+                            <div className="tm-list-name" onDoubleClick={e => this._startRenameTemplate(t, e)}>{t.name}</div>
+                          )}
                           <div className="tm-list-method">{t.method}</div>
                         </div>
                       ))}
@@ -446,12 +486,27 @@ class TemplateManager extends Component {
                           colTemplates.map(t => (
                             <div key={t.id}
                               className={`tm-list-item tm-list-item-indented${t.id === selectedId ? ' tm-list-item-selected' : ''}`}
-                              draggable
+                              draggable={editTemplateNameId !== t.id}
                               onDragStart={e => this._onTemplateDragStart(t.id, e)}
                               onDragEnd={this._onTemplateDragEnd}
                               onDragOver={e => e.preventDefault()}
                               onClick={() => this._select(t)}>
-                              <div className="tm-list-name">{t.name}</div>
+                              {editTemplateNameId === t.id ? (
+                                <input
+                                  className="tm-collection-rename-input"
+                                  value={editTemplateNameValue}
+                                  autoFocus
+                                  onChange={e => this.setState({ editTemplateNameValue: e.target.value })}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') this._commitRenameTemplate();
+                                    if (e.key === 'Escape') this.setState({ editTemplateNameId: null });
+                                  }}
+                                  onBlur={this._commitRenameTemplate}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              ) : (
+                                <div className="tm-list-name" onDoubleClick={e => this._startRenameTemplate(t, e)}>{t.name}</div>
+                              )}
                               <div className="tm-list-method">{t.method}</div>
                             </div>
                           ))
