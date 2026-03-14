@@ -5,6 +5,8 @@ import ReactDOM from 'react-dom';
 import ReactJson from 'react-json-view';
 import { connect } from 'react-redux';
 import { setTemplateManagerOpen } from '../state/toolbar';
+import { getNetworkEntry } from '../state/networkCache';
+import protoManager from '../utils/ProtoManager';
 import './TemplateManager.css';
 
 const STORAGE_KEY = 'grpc_devtools_templates_v1';
@@ -34,6 +36,10 @@ class TemplateManager extends Component {
     editHeaders: [],
     editBody: {},
     saved: false,
+    sending: false,
+    sentRequestId: null,
+    tmResponse: null,   // { data, error, statusCode }
+    responseCollapsed: 2,
     position: null,
     size: null,
   };
@@ -63,6 +69,21 @@ class TemplateManager extends Component {
   componentDidUpdate(prevProps) {
     if (this.props.open && !prevProps.open) {
       this._load();
+    }
+    if (this.state.sentRequestId && this.props.log !== prevProps.log) {
+      const entry = this.props.log.find(e => e.requestId === this.state.sentRequestId);
+      if (entry) {
+        const cached = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+        this.setState({
+          sending: false,
+          sentRequestId: null,
+          tmResponse: {
+            data: cached?.response ?? null,
+            error: entry.error ?? cached?.error ?? null,
+            statusCode: entry.statusCode,
+          },
+        });
+      }
     }
   }
 
@@ -228,6 +249,59 @@ class TemplateManager extends Component {
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ [STORAGE_KEY]: updated });
     }
+  };
+
+  // ── Send request ─────────────────────────────────────────────────
+
+  _send = () => {
+    const { editUrl, editHeaders, editBody, editTemplateCollectionId, collections } = this.state;
+    if (!editUrl || !protoManager.isReady()) return;
+
+    // Apply variable substitution
+    const col = editTemplateCollectionId ? collections.find(c => c.id === editTemplateCollectionId) : null;
+    const vars = (col?.variables || []).filter(v => v.key);
+    const resolveV = (s) => vars.reduce((str, { key, value }) =>
+      str.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value), s);
+
+    const url = resolveV(editUrl);
+    const headersObj = {};
+    editHeaders.forEach(h => { if (h.key) headersObj[h.key] = resolveV(h.value); });
+    let body = editBody;
+    try { body = JSON.parse(resolveV(JSON.stringify(editBody))); } catch (_) {}
+
+    // Extract method path (e.g. ridergwv1.RiderGw/Method) from URL
+    let methodPath = url;
+    try { methodPath = new URL(url).pathname.replace(/^\//, ''); } catch (_) {}
+
+    const encoded = protoManager.encodeMessage(methodPath, body);
+    if (!encoded) {
+      this.setState({ tmResponse: { data: null, error: { message: 'Failed to encode body — check proto schema.' }, statusCode: null } });
+      return;
+    }
+
+    const framed = protoManager.buildGrpcWebFrame(encoded);
+    let binary = '';
+    for (let i = 0; i < framed.length; i++) binary += String.fromCharCode(framed[i]);
+    const bodyBase64 = btoa(binary);
+
+    const requestId = Math.floor(Math.random() * 1000000);
+    this.setState({ sending: true, sentRequestId: requestId, tmResponse: null });
+
+    const code = `(function(){
+  const url=${JSON.stringify(url)},bodyBase64=${JSON.stringify(bodyBase64)},headers=${JSON.stringify(headersObj)},requestBody=${JSON.stringify(body)},requestId=${requestId};
+  const bs=atob(bodyBase64),bytes=new Uint8Array(bs.length);
+  for(let i=0;i<bs.length;i++)bytes[i]=bs.charCodeAt(i);
+  const t=Date.now();
+  fetch(url,{method:'POST',headers,body:bytes,credentials:'omit',mode:'cors'})
+    .then(r=>r.arrayBuffer().then(buf=>{const d=Date.now()-t,rb=new Uint8Array(buf);let b='';for(let i=0;i<rb.byteLength;i++)b+=String.fromCharCode(rb[i]);
+      window.postMessage({type:'__GRPCWEB_DEVTOOLS__',method:url,methodType:'unary',requestId,request:requestBody,responseBodyBase64:btoa(b),duration:d,isGenerated:true},'*');
+    }))
+    .catch(e=>{window.postMessage({type:'__GRPCWEB_DEVTOOLS__',method:url,methodType:'unary',requestId,request:requestBody,error:{code:-1,message:e.message},duration:Date.now()-t,isGenerated:true},'*');});
+})();`;
+
+    chrome.devtools.inspectedWindow.eval(code, (_r, ex) => {
+      if (ex) this.setState({ sending: false, sentRequestId: null, tmResponse: { data: null, error: { message: ex.value || 'Eval error' }, statusCode: null } });
+    });
   };
 
   // ── Variable autocomplete ─────────────────────────────────────────
@@ -507,7 +581,8 @@ class TemplateManager extends Component {
       selectedCollectionId, editVariables, variablesSaved,
       editCollectionId, editCollectionName, editTemplateCollectionId,
       editTemplateNameId, editTemplateNameValue,
-      editName, editUrl, editHeaders, editBody, headersCollapsed, varSuggest, varSuggestHighlight, saved, position, size,
+      editName, editUrl, editHeaders, editBody, headersCollapsed, varSuggest, varSuggestHighlight,
+      sending, tmResponse, responseCollapsed, saved, position, size,
     } = this.state;
 
     const selected = templates.find(t => t.id === selectedId);
@@ -810,16 +885,54 @@ class TemplateManager extends Component {
                 )}
               </div>
 
+              {/* Response section */}
+              {tmResponse && selected && (
+                <div className="tm-response-section">
+                  <div className="tm-response-header">
+                    <span className={`tm-response-status${tmResponse.error ? ' tm-response-error' : ' tm-response-ok'}`}>
+                      {tmResponse.error ? `Error${tmResponse.statusCode != null ? ` · ${tmResponse.statusCode}` : ''}` : `OK${tmResponse.statusCode != null ? ` · ${tmResponse.statusCode}` : ''}`}
+                    </span>
+                    <button className="tm-response-collapse" onClick={() => this.setState(s => ({ responseCollapsed: s.responseCollapsed === false ? 2 : false }))}>
+                      {responseCollapsed === false ? 'Collapse' : 'Expand'}
+                    </button>
+                  </div>
+                  <div className="tm-response-body">
+                    <ReactJson
+                      name={false}
+                      theme={window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default'}
+                      style={{ backgroundColor: 'transparent', fontSize: '12px' }}
+                      enableClipboard={false}
+                      displayDataTypes={false}
+                      displayObjectSize={false}
+                      collapsed={responseCollapsed}
+                      src={tmResponse.error || tmResponse.data || {}}
+                    />
+                  </div>
+                </div>
+              )}
+
               {(selected || selectedCollectionId) && (
                 <div className="tm-actions">
                   {selected && <button className="tm-delete-btn" onClick={this._delete}>🗑 Delete</button>}
                   {selectedCollectionId && <div />}
-                  <button
-                    className={`tm-save-btn${(saved || variablesSaved) ? ' tm-save-btn-ok' : ''}`}
-                    onClick={selectedCollectionId ? this._saveVariables : this._save}
-                  >
-                    {(saved || variablesSaved) ? '✓ Saved' : '💾 Save'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`tm-save-btn${(saved || variablesSaved) ? ' tm-save-btn-ok' : ''}`}
+                      onClick={selectedCollectionId ? this._saveVariables : this._save}
+                    >
+                      {(saved || variablesSaved) ? '✓ Saved' : '💾 Save'}
+                    </button>
+                    {selected && (
+                      <button
+                        className="tm-send-btn"
+                        onClick={this._send}
+                        disabled={sending || !editUrl || !protoManager.isReady()}
+                        title={!protoManager.isReady() ? 'Upload proto files in Settings first' : ''}
+                      >
+                        {sending ? 'Sending…' : 'Send →'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -860,6 +973,6 @@ class TemplateManager extends Component {
   }
 }
 
-const mapStateToProps = state => ({ open: state.toolbar.templateManagerOpen });
+const mapStateToProps = state => ({ open: state.toolbar.templateManagerOpen, log: state.network.log });
 const mapDispatchToProps = { setTemplateManagerOpen };
 export default connect(mapStateToProps, mapDispatchToProps)(TemplateManager);

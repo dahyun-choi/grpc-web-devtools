@@ -200,19 +200,34 @@ Build and send a brand-new gRPC request directly from the DevTools panel without
 - State is preserved when the modal is closed; **Clear** button resets all fields
 - Requires proto files to be uploaded in Settings
 
-### Request Templates
+### Request Templates & Template Manager
 
-Save frequently used gRPC requests as templates and reload them in the Request Generator.
+Save, organize, and send gRPC requests as reusable templates.
 
-- **Right-click** any row in the request list → **💾 Save as Template** to save the request's URL, headers, and body
+**Saving**
+- **Right-click** any row in the request list → **💾 Save as Template**
 - Field order in the saved body matches the proto declaration order
-- In the **Request Generator**, click **Templates** to open the template panel:
-  - Filter saved templates by name or method
-  - Click a template to instantly load its URL, headers, and body into the generator fields
-  - **×** button to delete an individual template
-- **Export** — download all templates as `grpc-templates.json` for backup
-- **Import** — load templates from a JSON file; duplicates are skipped automatically
-- Templates are persisted in `chrome.storage.local` and survive page reloads
+
+**Template Manager** — click the 📋 icon in the toolbar (next to Request Generator)
+- **Collections** — group templates into named folders (Postman-style)
+  - Click a collection name to manage it; **double-click** to rename inline
+  - Drag templates between collections to reorganize
+- **Templates** — double-click a template name to rename inline
+- Edit **Name**, **Collection**, **URL**, **Headers**, and **Request body** in the right panel
+- **Send →** — send the template as a gRPC request directly from the manager; response shown inline
+- **💾 Save** — persist edits to storage; **🗑 Delete** — remove the template
+
+**Collection Variables** — click a collection name to open its variables panel
+- Add `key` / `value` pairs and use `{{variable_name}}` syntax in URL, headers, or body
+- Variables are resolved automatically when loading a template into Request Generator or clicking **Send →**
+- Typing `{{` in URL, header values, or body shows an autocomplete dropdown; navigate with arrow keys and Enter
+
+**In the Request Generator**, click **Templates** to load a saved template (variables are resolved on load)
+
+**Export / Import**
+- **Export** — download all templates and collections as `grpc-templates.json`
+- **Import** — merge templates from a JSON file (duplicates skipped)
+- All data persisted in `chrome.storage.local`
 
 ### Load Test
 

@@ -529,3 +529,57 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Send button & response section ─────────────────────────────── */
+.tm-send-btn {
+  padding: 5px 16px;
+  border-radius: 4px;
+  border: none;
+  background: #2196F3;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tm-send-btn:hover { background: #1976D2; }
+.tm-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+.tm-response-section {
+  border-top: 1px solid var(--divider-color);
+  flex-shrink: 0;
+  background: var(--network-bg);
+}
+
+.tm-response-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.tm-response-status {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+}
+.tm-response-ok { color: #0a0; }
+.tm-response-error { color: rgb(216, 0, 0); }
+
+.tm-response-collapse {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-color);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0;
+}
+.tm-response-collapse:hover { opacity: 1; }
+
+.tm-response-body {
+  padding: 8px 12px;
+  overflow: auto;
+  max-height: 200px;
+}
