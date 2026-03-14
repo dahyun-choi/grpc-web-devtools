@@ -283,6 +283,24 @@ Replay a captured request repeatedly to stress-test an endpoint.
 - Use index notation for arrays: `appTypes[0]`, `items[*]`
 - Mutations are applied before proto re-encoding; falls back to original binary if proto is not loaded
 
+### RPC Stats
+
+Click the 📊 stats icon in the toolbar to open the RPC Stats modal — a per-method aggregation report of all captured gRPC requests.
+
+| Column | Description |
+|---|---|
+| **Method** | Short gRPC method name |
+| **Count** | Total number of captured calls |
+| **Avg** | Average latency |
+| **p95** | 95th-percentile latency (highlighted orange if > 1 s) |
+| **Min / Max** | Fastest and slowest observed latency |
+| **Error %** | Percentage of calls that returned an error (highlighted red) |
+
+- Click any column header to sort ascending/descending
+- Header row stays fixed while scrolling; **Total** row stays pinned at the bottom
+- **⎘ Copy** exports a plain-text report to the clipboard
+- Modal is draggable (drag the header) and resizable (bottom-right handle)
+
 ### Replay Scenario
 
 Record a sequence of gRPC calls and replay them in order with configurable delay and loop count.
