@@ -45,11 +45,13 @@ class TemplateManager extends Component {
   componentDidMount() {
     document.addEventListener('mousemove', this._onDragMove);
     document.addEventListener('mouseup', this._onDragEnd);
+    document.addEventListener('dragend', this._onTemplateDragEnd);
   }
 
   componentWillUnmount() {
     document.removeEventListener('mousemove', this._onDragMove);
     document.removeEventListener('mouseup', this._onDragEnd);
+    document.removeEventListener('dragend', this._onTemplateDragEnd);
   }
 
   componentDidUpdate(prevProps) {
@@ -118,6 +120,7 @@ class TemplateManager extends Component {
   // ── Collection variables ──────────────────────────────────────────
 
   _selectCollection = (col) => {
+    if (this._dragTemplateId) return; // ignore click during drag
     this.setState({
       selectedCollectionId: col.id,
       selectedId: null,
@@ -233,6 +236,7 @@ class TemplateManager extends Component {
 
   _onTemplateDragStart = (templateId, e) => {
     e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', templateId); } catch (_) {}
     this._dragTemplateId = templateId;
   };
 
@@ -243,7 +247,10 @@ class TemplateManager extends Component {
 
   _onCollectionDrop = (colId, e) => {
     e.preventDefault();
-    const templateId = this._dragTemplateId;
+    let templateId = this._dragTemplateId;
+    if (!templateId) {
+      try { templateId = e.dataTransfer.getData('text/plain'); } catch (_) {}
+    }
     this._dragTemplateId = null;
     if (!templateId) return;
     const newCollectionId = colId === '__uncategorized__' ? undefined : colId;
