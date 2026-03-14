@@ -175,6 +175,43 @@ class RequestGenerator extends Component {
     }
   };
 
+  _exportTemplates = () => {
+    const { templates } = this.state;
+    if (!templates.length) return;
+    const json = JSON.stringify({ version: 1, templates }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'grpc-templates.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  _importTemplates = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const imported = Array.isArray(parsed) ? parsed : (parsed.templates || []);
+        if (!imported.length) return;
+        // Merge: skip duplicates by id
+        const existing = this.state.templates;
+        const existingIds = new Set(existing.map(t => t.id));
+        const newOnes = imported.filter(t => t.id && !existingIds.has(t.id));
+        const merged = [...existing, ...newOnes];
+        this.setState({ templates: merged });
+        if (chrome?.storage?.local) {
+          chrome.storage.local.set({ grpc_devtools_templates_v1: merged });
+        }
+      } catch (_) {}
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   _onDragStart = (e) => {
     // Only drag on header itself, not on buttons inside it
     if (e.target.closest('button')) return;
@@ -560,6 +597,13 @@ class RequestGenerator extends Component {
                         onChange={e => this.setState({ templateFilter: e.target.value })}
                         autoFocus
                       />
+                      <div className="rg-templates-io">
+                        <button className="rg-templates-io-btn" onClick={this._exportTemplates} title="Export templates as JSON" disabled={!templates.length}>Export</button>
+                        <label className="rg-templates-io-btn" title="Import templates from JSON">
+                          Import
+                          <input type="file" accept=".json" style={{ display: 'none' }} onChange={this._importTemplates} />
+                        </label>
+                      </div>
                     </div>
                     {templates.length === 0 ? (
                       <div className="rg-templates-empty">

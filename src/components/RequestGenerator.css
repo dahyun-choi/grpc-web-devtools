@@ -535,3 +535,25 @@
   flex-shrink: 0;
 }
 .rg-template-del:hover { opacity: 1; color: rgb(216, 0, 0); }
+
+.rg-templates-io {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.rg-templates-io-btn {
+  flex: 1;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  opacity: 0.8;
+  user-select: none;
+}
+.rg-templates-io-btn:hover { opacity: 1; background: var(--network-row-hover); }
+.rg-templates-io-btn:disabled { opacity: 0.3; cursor: default; }
