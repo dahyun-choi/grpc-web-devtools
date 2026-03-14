@@ -9,6 +9,7 @@ import { FixedSizeList as List } from 'react-window';
 import NetworkListRow from './NetworkListRow';
 import LoadTestModal from './LoadTestModal';
 import ScenarioModal from './ScenarioModal';
+import DiffModal from './DiffModal';
 import { getNetworkEntry } from '../state/networkCache';
 import { selectLogEntry, setPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries } from '../state/network';
 import { restoreNetworkEntry } from '../state/networkCache';
@@ -344,6 +345,8 @@ class NetworkList extends Component {
       scenarioEntryIds: [],  // ordered list of entryIds in the scenario
       scenarioVisible: false,
       colWidths: { time: 85, code: 60, duration: 55 },
+      diffQueue: [],    // up to 2 entryIds for diff
+      diffVisible: false,
       columnVisibility: { time: true, code: true, duration: true },
       colMenu: { visible: false, x: 0, y: 0 },
       templateSaveToast: false,
@@ -362,6 +365,7 @@ class NetworkList extends Component {
     this.handleSaveAsTemplate = this.handleSaveAsTemplate.bind(this);
     this.handlePin = this.handlePin.bind(this);
     this.handleUnpin = this.handleUnpin.bind(this);
+    this.handleDiffToggle = this.handleDiffToggle.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -596,6 +600,19 @@ class NetworkList extends Component {
     this.props.unpinEntry(entryId);
   }
 
+  handleDiffToggle(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState(s => {
+      const q = s.diffQueue;
+      if (q.includes(entryId)) {
+        return { diffQueue: q.filter(id => id !== entryId), contextMenu: { ...s.contextMenu, visible: false } };
+      }
+      const next = [...q, entryId].slice(0, 2);
+      return { diffQueue: next, contextMenu: { ...s.contextMenu, visible: false } };
+    });
+  }
+
   handleColumnHeaderMenu = (e) => {
     e.preventDefault();
     this.setState({ colMenu: { visible: true, x: e.clientX, y: e.clientY } });
@@ -705,7 +722,7 @@ class NetworkList extends Component {
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu } = this.state;
+    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu, diffQueue, diffVisible } = this.state;
 
     const grpcurlStyle = {};
     if (grpcurlPos) { grpcurlStyle.position = 'fixed'; grpcurlStyle.left = grpcurlPos.x; grpcurlStyle.top = grpcurlPos.y; grpcurlStyle.margin = 0; }
@@ -716,6 +733,8 @@ class NetworkList extends Component {
     if (schemaSize) { schemaStyle.width = schemaSize.width; schemaStyle.maxWidth = 'none'; schemaStyle.height = schemaSize.height; schemaStyle.maxHeight = 'none'; }
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
     const isPinned = network.pinnedEntries.some(e => e.entryId === contextMenu.entryId);
+    const diffQueueIdx = diffQueue.indexOf(contextMenu.entryId);
+    const diffLabel = diffQueueIdx === 0 ? '⇄ Remove A from Diff' : diffQueueIdx === 1 ? '⇄ Remove B from Diff' : diffQueue.length === 0 ? '⇄ Diff A' : '⇄ Diff B';
 
     return (
       <div className="widget vbox network-list">
@@ -816,6 +835,29 @@ class NetworkList extends Component {
               </button>
             </div>
           )}
+
+          {/* Diff bar */}
+          {diffQueue.length > 0 && (
+            <div className="diff-bar">
+              <span className="diff-bar-label">
+                ⇄ Diff · <strong>A</strong>{diffQueue.length === 2 ? ' + B' : ' (select B)'}
+              </span>
+              <button
+                className="diff-bar-btn diff-bar-compare"
+                disabled={diffQueue.length < 2}
+                onClick={() => this.setState({ diffVisible: true })}
+              >
+                Compare →
+              </button>
+              <button
+                className="diff-bar-btn diff-bar-clear"
+                onClick={() => this.setState({ diffQueue: [], diffVisible: false })}
+                title="Clear diff"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
 
         {ReactDOM.createPortal(<>
@@ -855,6 +897,14 @@ class NetworkList extends Component {
                 ? <button className="grpc-context-menu-item" onClick={this.handleUnpin}>📌 Unpin</button>
                 : <button className="grpc-context-menu-item" onClick={this.handlePin}>📌 Pin</button>
               }
+              <div className="grpc-context-menu-divider" />
+              <button
+                className="grpc-context-menu-item"
+                onClick={this.handleDiffToggle}
+                disabled={diffQueue.length === 2 && diffQueueIdx === -1}
+              >
+                {diffLabel}
+              </button>
             </div>
           )}
 
@@ -968,6 +1018,16 @@ class NetworkList extends Component {
             />
           )}
         </>, document.body)}
+
+        {/* Diff modal */}
+        {diffVisible && diffQueue.length === 2 && ReactDOM.createPortal(
+          <DiffModal
+            entryIds={diffQueue}
+            log={network.log}
+            onClose={() => this.setState({ diffVisible: false })}
+          />,
+          document.body
+        )}
 
         {/* Template saved toast */}
         {this.state.templateSaveToast && ReactDOM.createPortal(
