@@ -504,6 +504,7 @@ class NetworkDetails extends Component {
           className="section-content"
           onMouseMove={fieldInspectorEnabled && requestTab === 'body' ? (e) => this._onSectionMouseMove(e, 'request') : undefined}
           onMouseLeave={fieldInspectorEnabled ? this._onSectionMouseLeave : undefined}
+          onClick={fieldInspectorEnabled && requestTab === 'body' ? (e) => this._onSectionClick(e, 'request') : undefined}
         >
           {requestTab === 'headers' && this._renderRequestHeaders(rawRequest)}
           {requestTab === 'body' && this._renderRequestBody(method, request, editMode, editedData, requestCollapsed, fieldInspectorEnabled, 'request')}
@@ -619,6 +620,7 @@ class NetworkDetails extends Component {
           className="section-content"
           onMouseMove={fieldInspectorEnabled && responseTab === 'body' ? (e) => this._onSectionMouseMove(e, 'response') : undefined}
           onMouseLeave={fieldInspectorEnabled ? this._onSectionMouseLeave : undefined}
+          onClick={fieldInspectorEnabled && responseTab === 'body' ? (e) => this._onSectionClick(e, 'response') : undefined}
         >
           {responseTab === 'headers' && this._renderResponseHeaders(rawRequest)}
           {responseTab === 'body' && (
@@ -2009,11 +2011,50 @@ class NetworkDetails extends Component {
     let el = target;
     while (el && el !== containerEl) {
       const cls = el.className;
-      if (typeof cls === 'string' && cls.includes('object-key') && !cls.includes('-val')) return el;
+      if (typeof cls === 'string') {
+        if ((cls.includes('object-key') && !cls.includes('-val')) || cls.includes('fj-key')) return el;
+      }
       el = el.parentElement;
     }
     return null;
   }
+
+  // For fast render: find the .fj-key sibling preceding a clicked value element
+  _findFastRenderKeyFromValue(target) {
+    const cls = target.className;
+    if (!cls || (!cls.includes('fj-str') && !cls.includes('fj-num') && !cls.includes('fj-lit'))) return null;
+    let node = target.previousSibling;
+    while (node) {
+      if (node.nodeType === Node.ELEMENT_NODE && typeof node.className === 'string' && node.className.includes('fj-key')) return node;
+      node = node.previousSibling;
+    }
+    return null;
+  }
+
+  _onSectionClick = (e, kind) => {
+    if (!this.props.fieldInspector) return;
+
+    // Key click (both react-json-view and fast render) → pin tooltip
+    const keyEl = this._findObjectKeyEl(e.target, e.currentTarget);
+    if (keyEl) {
+      const fieldName = keyEl.textContent.replace(/"/g, '').trim();
+      if (!fieldName || /^\d+$/.test(fieldName)) return;
+      const method = this._getMethodFromEntry();
+      const info = method ? protoManager.findFieldByName(method, fieldName, kind) : null;
+      this.setState({ fieldTooltip: { x: 0, y: 0, name: fieldName, info, pinned: true, kind } });
+      return;
+    }
+
+    // Value click in fast render → find associated key → pin tooltip
+    const valueKeyEl = this._findFastRenderKeyFromValue(e.target);
+    if (valueKeyEl) {
+      const fieldName = valueKeyEl.textContent.replace(/"/g, '').trim();
+      if (!fieldName || /^\d+$/.test(fieldName)) return;
+      const method = this._getMethodFromEntry();
+      const info = method ? protoManager.findFieldByName(method, fieldName, kind) : null;
+      this.setState({ fieldTooltip: { x: 0, y: 0, name: fieldName, info, pinned: true, kind } });
+    }
+  };
 
   _onSectionMouseMove = (e, kind) => {
     if (!this.props.fieldInspector) return;
