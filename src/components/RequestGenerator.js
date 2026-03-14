@@ -597,13 +597,7 @@ class RequestGenerator extends Component {
                         onChange={e => this.setState({ templateFilter: e.target.value })}
                         autoFocus
                       />
-                      <div className="rg-templates-io">
-                        <button className="rg-templates-io-btn" onClick={this._exportTemplates} title="Export templates as JSON" disabled={!templates.length}>Export</button>
-                        <label className="rg-templates-io-btn" title="Import templates from JSON">
-                          Import
-                          <input type="file" accept=".json" style={{ display: 'none' }} onChange={this._importTemplates} />
-                        </label>
-                      </div>
+
                     </div>
                     {templates.length === 0 ? (
                       <div className="rg-templates-empty">

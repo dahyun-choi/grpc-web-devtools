@@ -4,6 +4,7 @@ import './App.css';
 import MainLayout from './components/MainLayout';
 import Toolbar from './components/Toolbar';
 import RequestGenerator from './components/RequestGenerator';
+import TemplateManager from './components/TemplateManager';
 
 
 class App extends Component {
@@ -20,6 +21,7 @@ class App extends Component {
                   <Toolbar />
                   <MainLayout />
                   <RequestGenerator />
+                  <TemplateManager />
                 </div>
               </div>
             </div>

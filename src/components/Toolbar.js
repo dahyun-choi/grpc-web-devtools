@@ -4,11 +4,12 @@ import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache, applyGlobalSearch } from '../state/network';
-import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setFastRender, setRequestGeneratorOpen, setPaused } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setSettingsOpen, setSplitPanel, setFieldInspector, setFastRender, setRequestGeneratorOpen, setTemplateManagerOpen, setPaused } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import SettingsIcon from '../icons/Settings';
 import RequestGeneratorIcon from '../icons/RequestGenerator';
+import TemplatesIcon from '../icons/Templates';
 import PauseIcon from '../icons/Pause';
 import PlayIcon from '../icons/Play';
 import Settings from './Settings';
@@ -128,6 +129,12 @@ class Toolbar extends Component {
             onClick={() => this.props.setRequestGeneratorOpen(true)}
           >
             <RequestGeneratorIcon />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Template Manager — view and edit saved request templates"
+            onClick={() => this.props.setTemplateManagerOpen(true)}
+          >
+            <TemplatesIcon />
           </ToolbarButton>
         </>
     )
@@ -323,6 +330,7 @@ const mapDispatchToProps = {
   setFieldInspector,
   setFastRender,
   setRequestGeneratorOpen,
+  setTemplateManagerOpen,
   setPaused,
   applyGlobalSearch
 };
