@@ -39,9 +39,13 @@ class RequestGenerator extends Component {
     responseCopied: false,
     position: null, // { x, y } — null means centered (default)
     size: null,     // { width, height } — null means default CSS size
+    templates: [],
+    templatesOpen: false,
+    templateFilter: '',
   };
 
   _dropdownRef = React.createRef();
+  _templatesRef = React.createRef();
   _dropdownListRef = React.createRef();
   _modalRef = React.createRef();
   _responseRef = React.createRef();
@@ -54,6 +58,7 @@ class RequestGenerator extends Component {
     document.addEventListener('mousedown', this._handleOutsideClick);
     document.addEventListener('mousemove', this._onDragMove);
     document.addEventListener('mouseup', this._onDragEnd);
+    this._loadTemplates();
   }
 
   componentWillUnmount() {
@@ -67,6 +72,7 @@ class RequestGenerator extends Component {
     if (this.props.open && !prevProps.open) {
       const allMethods = protoManager.getAllMethods();
       this.setState({ methods: this._filterToUsedMethods(allMethods) });
+      this._loadTemplates();
     }
 
     // Watch for response matching sentRequestId
@@ -92,6 +98,48 @@ class RequestGenerator extends Component {
   _handleOutsideClick = (e) => {
     if (this._dropdownRef.current && !this._dropdownRef.current.contains(e.target)) {
       this.setState({ dropdownOpen: false, highlightedIndex: -1 });
+    }
+    if (this._templatesRef.current && !this._templatesRef.current.contains(e.target)) {
+      this.setState({ templatesOpen: false, templateFilter: '' });
+    }
+  };
+
+  _loadTemplates = () => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.get(['grpc_devtools_templates_v1'], (result) => {
+        this.setState({ templates: result['grpc_devtools_templates_v1'] || [] });
+      });
+    }
+  };
+
+  _applyTemplate = (template) => {
+    const headers = (template.headers || []).map((h, i) => ({
+      id: Date.now() + i,
+      key: h.key,
+      value: h.value,
+    }));
+    const matched = this.state.methods.find(m =>
+      m.fullPath === template.method ||
+      template.method?.endsWith(`/${m.fullPath}`) ||
+      template.url?.includes(`/${m.fullPath}`)
+    );
+    this.setState({
+      url: template.url || '',
+      headers,
+      body: template.request || {},
+      selectedMethod: matched || null,
+      templatesOpen: false,
+      templateFilter: '',
+      response: null,
+    });
+  };
+
+  _deleteTemplate = (templateId, e) => {
+    e.stopPropagation();
+    const updated = this.state.templates.filter(t => t.id !== templateId);
+    this.setState({ templates: updated });
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ grpc_devtools_templates_v1: updated });
     }
   };
 
@@ -436,7 +484,7 @@ class RequestGenerator extends Component {
 
   render() {
     if (!this.props.open) return null;
-    const { methods, selectedMethod, searchQuery, dropdownOpen, url, headers, body, sending, response, responseCollapsed, responseKey, responseCopied, position, size } = this.state;
+    const { methods, selectedMethod, searchQuery, dropdownOpen, url, headers, body, sending, response, responseCollapsed, responseKey, responseCopied, position, size, templates, templatesOpen, templateFilter } = this.state;
     const filtered = this._filteredMethods();
     const ready = protoManager.isReady();
     const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
@@ -462,6 +510,48 @@ class RequestGenerator extends Component {
           <div className="rg-header" onMouseDown={this._onDragStart}>
             <span className="rg-title">Request Generator</span>
             <div className="rg-header-actions">
+              <div className="rg-templates-wrap" ref={this._templatesRef}>
+                <button
+                  className={`rg-clear-btn${templatesOpen ? ' rg-btn-active' : ''}`}
+                  onClick={() => this.setState(s => ({ templatesOpen: !s.templatesOpen, templateFilter: '' }))}
+                  title="Load from saved templates"
+                >
+                  Templates{templates.length > 0 ? ` (${templates.length})` : ''}
+                </button>
+                {templatesOpen && (
+                  <div className="rg-templates-panel">
+                    <div className="rg-templates-search-row">
+                      <input
+                        className="rg-templates-search"
+                        placeholder="Filter templates..."
+                        value={templateFilter}
+                        onChange={e => this.setState({ templateFilter: e.target.value })}
+                        autoFocus
+                      />
+                    </div>
+                    {templates.length === 0 ? (
+                      <div className="rg-templates-empty">
+                        No saved templates yet.<br />
+                        Right-click any request → "💾 Save as Template"
+                      </div>
+                    ) : (
+                      <div className="rg-templates-list">
+                        {templates
+                          .filter(t => !templateFilter || t.name.toLowerCase().includes(templateFilter.toLowerCase()) || (t.method || '').toLowerCase().includes(templateFilter.toLowerCase()))
+                          .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
+                          .map(t => (
+                            <div key={t.id} className="rg-template-item" onClick={() => this._applyTemplate(t)}>
+                              <span className="rg-template-name">{t.name}</span>
+                              <span className="rg-template-method">{t.method}</span>
+                              <button className="rg-template-del" onClick={(e) => this._deleteTemplate(t.id, e)} title="Delete">×</button>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <button className="rg-clear-btn" onClick={this._clear} title="Clear all fields">Clear</button>
               <button className="rg-close" onClick={this._close}>✕</button>
             </div>

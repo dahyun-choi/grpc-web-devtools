@@ -429,3 +429,109 @@
     color: #d2a8ff !important;
   }
 }
+
+/* ── Templates panel ─────────────────────────────────────────────────── */
+.rg-templates-wrap {
+  position: relative;
+}
+
+.rg-btn-active {
+  background: var(--network-row-hover) !important;
+  opacity: 1 !important;
+}
+
+.rg-templates-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 340px;
+  max-height: 300px;
+  background: var(--toolbar-bg-color);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rg-templates-search-row {
+  padding: 8px;
+  border-bottom: 1px solid var(--divider-color);
+  flex-shrink: 0;
+}
+
+.rg-templates-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--network-bg);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  outline: none;
+}
+.rg-templates-search:focus { border-color: #2196F3; }
+
+.rg-templates-empty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--toolbar-color);
+  opacity: 0.55;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.rg-templates-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.rg-template-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  gap: 6px;
+  border-bottom: 1px solid var(--divider-color);
+}
+.rg-template-item:last-child { border-bottom: none; }
+.rg-template-item:hover { background: var(--network-row-hover); }
+
+.rg-template-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--toolbar-color);
+  flex-shrink: 0;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rg-template-method {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--toolbar-color);
+  opacity: 0.5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rg-template-del {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-color);
+  opacity: 0.35;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.rg-template-del:hover { opacity: 1; color: rgb(216, 0, 0); }

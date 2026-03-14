@@ -520,3 +520,18 @@
   white-space: pre;
 }
 
+
+.grpc-template-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #323232;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.92;
+}

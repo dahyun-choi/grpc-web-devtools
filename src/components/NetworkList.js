@@ -316,6 +316,7 @@ class NetworkList extends Component {
       colWidths: { time: 85, code: 60, duration: 55 },
       columnVisibility: { time: true, code: true, duration: true },
       colMenu: { visible: false, x: 0, y: 0 },
+      templateSaveToast: false,
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
     this.hideContextMenu = this.hideContextMenu.bind(this);
@@ -328,6 +329,7 @@ class NetworkList extends Component {
     this.handleScenarioRemoveStep = this.handleScenarioRemoveStep.bind(this);
     this.handleScenarioClear = this.handleScenarioClear.bind(this);
     this.handleScenarioReorder = this.handleScenarioReorder.bind(this);
+    this.handleSaveAsTemplate = this.handleSaveAsTemplate.bind(this);
     this.closeModal = this.closeModal.bind(this);
     this.copyCommand = this.copyCommand.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -466,6 +468,66 @@ class NetworkList extends Component {
 
   handleScenarioReorder(newIds) {
     this.setState({ scenarioEntryIds: newIds });
+  }
+
+  handleSaveAsTemplate(e) {
+    e.stopPropagation();
+    const { entryId } = this.state.contextMenu;
+    this.setState({ contextMenu: { ...this.state.contextMenu, visible: false } });
+
+    const summaryEntry = this.props.network.log.find(en => en.entryId === entryId);
+    const fullEntry = getNetworkEntry(entryId);
+    if (!summaryEntry || !fullEntry) return;
+
+    const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
+    const { requestId, method, timestamp } = fullEntry;
+    let raw = rawCache?.get(requestId);
+    if (!raw) raw = rawCache?.get(entryId);
+    if (!raw && method && timestamp) raw = rawCache?.get(`${method}@${timestamp}`);
+    if (!raw && method && rawCache) {
+      let best = null, bestScore = Infinity;
+      const ts = timestamp || Date.now();
+      for (const [, v] of rawCache.entries()) {
+        if (v.url === method || v.url?.includes(method) || method?.includes(v.url)) {
+          const diff = Math.abs(ts - (v.timestamp || 0));
+          if (diff < bestScore) { bestScore = diff; best = v; }
+        }
+      }
+      raw = best;
+    }
+
+    const ALLOWED = ['content-type','grpc-timeout','grpc-encoding','grpc-accept-encoding','x-grpc-web','authorization','app-version','instance-id','service-name'];
+    let url = summaryEntry.method || '';
+    let headers = [{ key: 'content-type', value: 'application/grpc-web+proto' }];
+    if (raw?.url) {
+      url = raw.url;
+      if (Array.isArray(raw.headers)) {
+        headers = raw.headers
+          .filter(h => { const n = h.name.toLowerCase(); return ALLOWED.includes(n) || (n.startsWith('x-') && !n.startsWith('x-forwarded')); })
+          .map(h => ({ key: h.name, value: h.value }));
+      }
+    }
+
+    let name = summaryEntry.method || 'template';
+    try { name = new URL(summaryEntry.method).pathname.split('/').filter(Boolean).pop() || name; } catch (_) { name = String(name).split('/').pop() || name; }
+
+    const newTemplate = {
+      id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      method: summaryEntry.method || '',
+      url,
+      headers,
+      request: fullEntry.request ?? {},
+      savedAt: Date.now(),
+    };
+
+    chrome.storage.local.get(['grpc_devtools_templates_v1'], (result) => {
+      const updated = [...(result['grpc_devtools_templates_v1'] || []), newTemplate];
+      chrome.storage.local.set({ grpc_devtools_templates_v1: updated }, () => {
+        this.setState({ templateSaveToast: true });
+        setTimeout(() => this.setState({ templateSaveToast: false }), 1800);
+      });
+    });
   }
 
   handleColumnHeaderMenu = (e) => {
@@ -670,6 +732,10 @@ class NetworkList extends Component {
               <button className="grpc-context-menu-item" onClick={this.handleScenarioToggle}>
                 {inScenario ? '🎬 Remove from Scenario' : '🎬 Add to Scenario'}
               </button>
+              <div className="grpc-context-menu-divider" />
+              <button className="grpc-context-menu-item" onClick={this.handleSaveAsTemplate}>
+                💾 Save as Template
+              </button>
             </div>
           )}
 
@@ -783,6 +849,12 @@ class NetworkList extends Component {
             />
           )}
         </>, document.body)}
+
+        {/* Template saved toast */}
+        {this.state.templateSaveToast && ReactDOM.createPortal(
+          <div className="grpc-template-toast">Template saved</div>,
+          document.body
+        )}
 
         {/* Column visibility menu */}
         {colMenu.visible && ReactDOM.createPortal(<>
