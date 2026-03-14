@@ -266,6 +266,23 @@ Replay a captured request repeatedly to stress-test an endpoint.
 - Click **■ Stop** to cancel mid-run
 - Each replayed request appears in the list as a repeat entry (yellow ↩)
 
+**Mutation Rules** — modify request fields on each iteration before sending:
+
+| Type | Behavior |
+|---|---|
+| `++ Increment` | Increment an integer field by the given step each request |
+| `str ++` | Find the last number in a string and increment it (e.g. `shucle-test10` → `shucle-test11`) |
+| `str --` | Decrement the last number in a string |
+| `str random` | Replace the last number in a string with a random value in `[min, max]` |
+| `now() ms` | Set field to current Unix timestamp in milliseconds |
+| `now() s` | Set field to current Unix timestamp in seconds |
+| `Enum Random` | Pick a random value from the proto enum (supports repeated/array fields) |
+| `UUID` | Generate a new UUID string for each request |
+
+- Use dot notation for nested fields: `request.id`, `page.number`
+- Use index notation for arrays: `appTypes[0]`, `items[*]`
+- Mutations are applied before proto re-encoding; falls back to original binary if proto is not loaded
+
 ### Replay Scenario
 
 Record a sequence of gRPC calls and replay them in order with configurable delay and loop count.
