@@ -37,7 +37,12 @@ class LoadTestModal extends Component {
     statsCopied: false,
     mutations: [],       // [{ id, path, type, step }]
     mutationsOpen: true, // show/hide mutations section
+    position: null,      // { x, y } for drag
   };
+
+  _modalRef = React.createRef();
+  _dragOffset = { x: 0, y: 0 };
+  _isDragging = false;
 
   _timerId = null;
   _statsTimerId = null;
@@ -63,10 +68,44 @@ class LoadTestModal extends Component {
     }
   }
 
+  componentDidMount() {
+    document.addEventListener('mousemove', this._onDragMove);
+    document.addEventListener('mouseup', this._onDragEnd);
+  }
+
   componentWillUnmount() {
     this._clearTimer();
     if (this._statsTimerId) clearTimeout(this._statsTimerId);
+    document.removeEventListener('mousemove', this._onDragMove);
+    document.removeEventListener('mouseup', this._onDragEnd);
   }
+
+  _onDragStart = (e) => {
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
+    e.preventDefault();
+    const modal = this._modalRef.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    this._dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this._isDragging = true;
+    modal.style.userSelect = 'none';
+  };
+
+  _onDragMove = (e) => {
+    if (!this._isDragging) return;
+    const modal = this._modalRef.current;
+    if (!modal) return;
+    const x = Math.max(0, Math.min(e.clientX - this._dragOffset.x, window.innerWidth - modal.offsetWidth));
+    const y = Math.max(0, Math.min(e.clientY - this._dragOffset.y, window.innerHeight - modal.offsetHeight));
+    this.setState({ position: { x, y } });
+  };
+
+  _onDragEnd = () => {
+    if (!this._isDragging) return;
+    this._isDragging = false;
+    const modal = this._modalRef.current;
+    if (modal) modal.style.userSelect = '';
+  };
 
   _clearTimer() {
     if (this._timerId) { clearTimeout(this._timerId); this._timerId = null; }
@@ -421,7 +460,8 @@ class LoadTestModal extends Component {
 
   render() {
     const { onClose, log, entryId } = this.props;
-    const { count, interval, running, stopped, fired, total, succeeded, failed, stats, statsCopied, mutations, mutationsOpen } = this.state;
+    const { count, interval, running, stopped, fired, total, succeeded, failed, stats, statsCopied, mutations, mutationsOpen, position } = this.state;
+    const modalStyle = position ? { position: 'fixed', left: position.x, top: position.y, margin: 0 } : {};
 
     const summaryEntry = log.find(e => e.entryId === entryId);
     const methodLabel = summaryEntry?.method
@@ -436,10 +476,10 @@ class LoadTestModal extends Component {
 
     return (
       <div className="lt-overlay" onClick={onClose}>
-        <div className="lt-modal" onClick={e => e.stopPropagation()}>
+        <div className="lt-modal" ref={this._modalRef} style={modalStyle} onClick={e => e.stopPropagation()}>
 
-          {/* Header */}
-          <div className="lt-header">
+          {/* Header — drag handle */}
+          <div className="lt-header" onMouseDown={this._onDragStart} style={{ cursor: 'move' }}>
             <span className="lt-title">Load Test</span>
             <button className="lt-close" onClick={onClose}>✕</button>
           </div>
