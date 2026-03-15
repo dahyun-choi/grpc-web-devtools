@@ -184,6 +184,20 @@ Server-streaming RPCs are tracked in a single row that updates in place as messa
 - Individual messages can be expanded/collapsed independently; the **Collapse/Expand** button in the section header controls all messages at once
 - A **✓ Stream complete** indicator appears when the server signals EOF
 
+### gRPC Streaming Visualizer
+
+Visualize server-streaming RPCs as an interactive message timeline.
+
+**Right-click** any server-streaming row → **📡 Streaming Visualizer**
+
+- **Two-column timeline** — Client request on the left, server messages on the right with directional arrows
+- **Rel / Abs** toggle — switch between relative timestamps (`+500ms`) and absolute clock times (`14:32:01.500`)
+- Click any server message to inspect its **JSON body**, size, and timestamps in the detail panel
+- **← Back** navigates to the previous message; **Diff with Previous →** shows a unified diff against the preceding message (toggle back to **Body** to return)
+- **⚠ Latency spike detected** banner appears before messages where the inter-message gap exceeds 3× the average and is at least 200 ms
+- Drag the divider between the timeline and detail panel to resize each area
+- Modal is draggable (header) and resizable (bottom-right handle)
+
 ### Request Generator
 
 Build and send a brand-new gRPC request directly from the DevTools panel without re-triggering it from the page.
