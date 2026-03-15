@@ -10,6 +10,7 @@ import NetworkListRow from './NetworkListRow';
 import LoadTestModal from './LoadTestModal';
 import ScenarioModal from './ScenarioModal';
 import DiffModal from './DiffModal';
+import StreamingVisualizerModal from './StreamingVisualizerModal';
 import { getNetworkEntry } from '../state/networkCache';
 import { selectLogEntry, setPendingAction, pinEntry, unpinEntry, selectPinnedEntry, setPinnedEntries } from '../state/network';
 import { restoreNetworkEntry } from '../state/networkCache';
@@ -347,6 +348,7 @@ class NetworkList extends Component {
       colWidths: { time: 85, code: 60, duration: 55 },
       diffQueue: [],    // up to 2 entryIds for diff
       diffVisible: false,
+      streamingVisualizerEntryId: null,
       columnVisibility: { time: true, code: true, duration: true },
       colMenu: { visible: false, x: 0, y: 0 },
       templateSaveToast: false,
@@ -722,7 +724,7 @@ class NetworkList extends Component {
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu, diffQueue, diffVisible } = this.state;
+    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu, diffQueue, diffVisible, streamingVisualizerEntryId } = this.state;
 
     const grpcurlStyle = {};
     if (grpcurlPos) { grpcurlStyle.position = 'fixed'; grpcurlStyle.left = grpcurlPos.x; grpcurlStyle.top = grpcurlPos.y; grpcurlStyle.margin = 0; }
@@ -733,6 +735,8 @@ class NetworkList extends Component {
     if (schemaSize) { schemaStyle.width = schemaSize.width; schemaStyle.maxWidth = 'none'; schemaStyle.height = schemaSize.height; schemaStyle.maxHeight = 'none'; }
     const inScenario = scenarioEntryIds.includes(contextMenu.entryId);
     const isPinned = network.pinnedEntries.some(e => e.entryId === contextMenu.entryId);
+    const contextSummary = network.log.find(e => e.entryId === contextMenu.entryId);
+    const isStreamingEntry = contextSummary?.methodType === 'server_streaming';
     const diffQueueIdx = diffQueue.indexOf(contextMenu.entryId);
     const diffLabel = diffQueueIdx === 0 ? '⇄ Remove A from Diff' : diffQueueIdx === 1 ? '⇄ Remove B from Diff' : diffQueue.length === 0 ? '⇄ Diff A' : '⇄ Diff B';
 
@@ -905,6 +909,19 @@ class NetworkList extends Component {
               >
                 {diffLabel}
               </button>
+              {isStreamingEntry && (
+                <>
+                  <div className="grpc-context-menu-divider" />
+                  <button
+                    className="grpc-context-menu-item"
+                    onClick={() => {
+                      this.setState({ streamingVisualizerEntryId: contextMenu.entryId, contextMenu: { ...contextMenu, visible: false } });
+                    }}
+                  >
+                    📡 Streaming Visualizer
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -1018,6 +1035,16 @@ class NetworkList extends Component {
             />
           )}
         </>, document.body)}
+
+        {/* Streaming Visualizer modal */}
+        {streamingVisualizerEntryId && ReactDOM.createPortal(
+          <StreamingVisualizerModal
+            entryId={streamingVisualizerEntryId}
+            log={network.log}
+            onClose={() => this.setState({ streamingVisualizerEntryId: null })}
+          />,
+          document.body
+        )}
 
         {/* Diff modal */}
         {diffVisible && diffQueue.length === 2 && ReactDOM.createPortal(
