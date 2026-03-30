@@ -22,7 +22,8 @@
     "react-window": "^1.8.6"
   },
   "devDependencies": {
-    "@babel/helper-define-map": "^7.15.4"
+    "@babel/helper-define-map": "^7.15.4",
+    "yarn": "^1.22.22"
   },
   "scripts": {
     "start": "react-scripts start",
