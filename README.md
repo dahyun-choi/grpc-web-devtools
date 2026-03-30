@@ -15,6 +15,7 @@ recommended)
 
 or
 
+1. install [nvm](https://github.com/nvm-sh/nvm) and set up Node.js (e.g. `nvm install --lts && nvm use --lts`)
 1. build it with `make build`
 1. open the **Extension Management** page by navigating to `chrome://extensions`.
 1. enable **Developer Mode** by clicking the toggle switch next to "Developer mode".
