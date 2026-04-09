@@ -788,6 +788,28 @@ class NetworkDetails extends Component {
   };
 
   _renderRequestHeaders = (rawRequest) => {
+    const { editMode, editedData } = this.state;
+
+    if (editMode && editedData?.headers) {
+      const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+      return (
+        <ReactJson
+          key={`req-headers-edit-${this.props.entry?.entryId}`}
+          name={false}
+          theme={theme}
+          style={{ backgroundColor: "transparent" }}
+          enableClipboard={false}
+          collapsed={false}
+          displayDataTypes={false}
+          displayObjectSize={false}
+          src={editedData.headers}
+          onEdit={this._onHeaderEdit}
+          onAdd={this._onHeaderEdit}
+          onDelete={this._onHeaderEdit}
+        />
+      );
+    }
+
     if (!rawRequest || !rawRequest.headers) {
       return <div className="no-data">No request headers available</div>;
     }
@@ -1023,13 +1045,51 @@ class NetworkDetails extends Component {
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { method, request, response, error } = entryToRender;
+    const { method, request, response, error, requestId } = entryToRender;
 
     // Create initial editable data
     const editData = { method };
     if (request) editData.request = request;
     if (response) editData.response = response;
     if (error) editData.error = error;
+
+    // Extract headers from raw cache for editing
+    const forbiddenHeaders = [
+      'cookie', 'cookie2', 'host', 'connection', 'content-length', 'expect',
+      'origin', 'referer', 'user-agent', 'accept', 'accept-encoding',
+      'accept-language', 'priority', 'sec-fetch-site', 'sec-fetch-mode',
+      'sec-fetch-dest', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'
+    ];
+    const rawCache = window.__GRPCWEB_DEVTOOLS_RAW_CACHE__;
+    let rawRequest = null;
+    if (requestId !== undefined) rawRequest = rawCache?.get(requestId);
+    if (!rawRequest && entry.entryId !== undefined) rawRequest = rawCache?.get(entry.entryId);
+    if (!rawRequest && method && entryToRender.timestamp && rawCache) {
+      rawRequest = rawCache.get(`${method}@${entryToRender.timestamp}`) || null;
+    }
+    if (!rawRequest && method && rawCache) {
+      let best = null, bestScore = Infinity;
+      const ts = entryToRender.timestamp || Date.now();
+      for (const [, v] of rawCache.entries()) {
+        if (v.url === method || v.url.includes(method) || method.includes(v.url)) {
+          const diff = Math.abs(ts - (v.timestamp || 0));
+          if (diff < bestScore) { bestScore = diff; best = v; }
+        }
+      }
+      rawRequest = best;
+    }
+
+    if (rawRequest?.headers) {
+      const headers = {};
+      const headersArr = Array.isArray(rawRequest.headers) ? rawRequest.headers : Object.entries(rawRequest.headers).map(([name, value]) => ({ name, value }));
+      headersArr.forEach(h => {
+        const lower = h.name.toLowerCase();
+        if (!lower.startsWith(':') && !lower.startsWith('sec-') && !forbiddenHeaders.includes(lower)) {
+          headers[h.name] = h.value;
+        }
+      });
+      editData.headers = headers;
+    }
 
     this.setState({
       editMode: true,
@@ -1064,6 +1124,16 @@ class NetworkDetails extends Component {
       editedData: {
         ...prevState.editedData,
         request: edit.updated_src.request,
+      },
+    }));
+    return true;
+  };
+
+  _onHeaderEdit = (edit) => {
+    this.setState((prevState) => ({
+      editedData: {
+        ...prevState.editedData,
+        headers: edit.updated_src,
       },
     }));
     return true;
@@ -1270,25 +1340,35 @@ class NetworkDetails extends Component {
     ];
 
     const headers = {};
-    rawRequest.headers.forEach(h => {
-      const headerName = h.name.toLowerCase();
+    if (editedData.headers) {
+      // Use user-edited headers, still filtering forbidden ones
+      Object.entries(editedData.headers).forEach(([name, value]) => {
+        const lower = name.toLowerCase();
+        if (!lower.startsWith(':') && !lower.startsWith('sec-') && !forbiddenHeaders.includes(lower)) {
+          headers[name] = value;
+        }
+      });
+    } else {
+      rawRequest.headers.forEach(h => {
+        const headerName = h.name.toLowerCase();
 
-      if (headerName.startsWith(':')) {
-        return;
-      }
+        if (headerName.startsWith(':')) {
+          return;
+        }
 
-      if (forbiddenHeaders.includes(headerName)) {
-        return;
-      }
+        if (forbiddenHeaders.includes(headerName)) {
+          return;
+        }
 
-      if (headerName.startsWith('sec-')) {
-        return;
-      }
+        if (headerName.startsWith('sec-')) {
+          return;
+        }
 
-      if (allowedHeaders.includes(headerName) || headerName.startsWith('x-')) {
-        headers[h.name] = h.value;
-      }
-    });
+        if (allowedHeaders.includes(headerName) || headerName.startsWith('x-')) {
+          headers[h.name] = h.value;
+        }
+      });
+    }
 
     console.log('[Panel] Filtered headers:', headers);
 
