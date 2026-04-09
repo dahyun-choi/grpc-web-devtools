@@ -1458,7 +1458,7 @@ class NetworkDetails extends Component {
   const headers = ${JSON.stringify(headers)};
   const grpcMethod = ${JSON.stringify(method)};
   const requestData = ${JSON.stringify(editedData.request)};
-  const requestHeaders = ${JSON.stringify(rawRequest.headers)};
+  const requestHeaders = ${JSON.stringify(Object.entries(headers).map(([name, value]) => ({ name, value })))};
 
   console.log('[Page] Edit & Repeat - Converting base64 to bytes');
   // Convert base64 to Uint8Array
