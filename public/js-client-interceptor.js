@@ -162,22 +162,26 @@
   // Step 6: Register window.__CONNECT_WEB_DEVTOOLS__
   const prevConnectDevtools = window.__CONNECT_WEB_DEVTOOLS__;
   window.__CONNECT_WEB_DEVTOOLS__ = (next) => async (req) => {
+    // Chain previous interceptor: our interceptor wraps prev, not bypasses it
+    const effectiveNext = typeof prevConnectDevtools === 'function'
+      ? prevConnectDevtools(next)
+      : next;
+
     const requestId = nextRequestId();
     const requestPayload = serializeConnectWeb(req.message);
     const methodName = req.method && req.method.name ? req.method.name : String(req.url || '');
+    const methodType = req.stream ? 'server_streaming' : 'unary';
     const replayToken = registerHandle((json, _cmd) => {
       const replayReq = reconstructConnectWeb(req.message, json);
-      return next({ ...req, message: replayReq });
+      return effectiveNext({ ...req, message: replayReq });
     });
 
-    const methodType = req.stream ? 'server_streaming' : 'unary';
     interceptedMethods.set(methodName, Date.now());
     post({ transport: TRANSPORT_CONNECT, phase: 'start', method: methodName, methodType, requestId, request: requestPayload, replayToken });
 
     try {
-      const response = await next(req);
+      const response = await effectiveNext(req);
       post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType, requestId, response: serializeConnectWeb(response.message) });
-      if (typeof prevConnectDevtools === 'function') prevConnectDevtools(next)(req);
       return response;
     } catch (error) {
       post({ transport: TRANSPORT_CONNECT, phase: 'error', method: methodName, methodType, requestId, error: { code: error.code, message: error.message } });
