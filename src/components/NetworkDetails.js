@@ -139,6 +139,7 @@ class NetworkDetails extends Component {
   jsonContainerRef = React.createRef();
   containerRef = React.createRef();
   highlightTimeout = null;
+  _jsReplayCleanups = [];
 
   componentDidUpdate(prevProps, prevState) {
     const prevEntryId = prevProps.entry?.entryId ?? null;
@@ -209,6 +210,8 @@ class NetworkDetails extends Component {
     }
     document.removeEventListener('mousemove', this._handleMouseMove);
     document.removeEventListener('mouseup', this._handleMouseUp);
+    this._jsReplayCleanups.forEach(cleanup => cleanup());
+    this._jsReplayCleanups = [];
   }
 
   render() {
@@ -1574,19 +1577,32 @@ class NetworkDetails extends Component {
 
     const onRejected = (event) => {
       if (event.detail && event.detail.replayAttemptId === replayAttemptId) {
-        window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+        cleanup();
+        this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
         console.warn('[Panel] JS replay rejected:', event.detail.reason);
         this.setState({ repeated: false, editSent: false });
         alert(`Replay failed: ${event.detail.reason}\n\nFall back to raw fetch repeat if available.`);
       }
     };
+
     window.addEventListener('grpc-devtools-replay-rejected', onRejected);
-    setTimeout(() => window.removeEventListener('grpc-devtools-replay-rejected', onRejected), 10000);
+    const timerId = setTimeout(() => {
+      window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+      this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
+    }, 10000);
+
+    const cleanup = () => {
+      window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+      clearTimeout(timerId);
+    };
+    this._jsReplayCleanups.push(cleanup);
 
     const port = window.__GRPCWEB_DEVTOOLS_PORT__;
     const tabId = window.__GRPCWEB_DEVTOOLS_TAB_ID__;
     if (!port) {
       console.error('[Panel] No port available for JS replay');
+      cleanup();
+      this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
       return false;
     }
 
