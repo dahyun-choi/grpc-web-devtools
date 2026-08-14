@@ -17,6 +17,16 @@ if (typeof window.__grpcWebDevtoolsRawRequests === 'undefined') {
 }
 const __grpcWebDevtoolsRawRequests = window.__grpcWebDevtoolsRawRequests;
 
+// Skip __GRPCWEB_DEVTOOLS__ postMessage if JS-level interceptor already captured this method.
+// Raw request storage (__GRPCWEB_DEVTOOLS_RAW_REQUEST__) is NOT skipped — needed for fallback.
+function shouldSkipXhrDevtoolsEvent(method) {
+  var jsMap = window.__grpcWebJsInterceptedMethods;
+  if (!jsMap || !method) return false;
+  var capturedAt = jsMap.get(method);
+  if (!capturedAt) return false;
+  return (Date.now() - capturedAt) < 3000;
+}
+
 console.log('[gRPC DevTools] Injected script loaded');
 
 // Intercept XMLHttpRequest to capture raw request data
@@ -150,34 +160,40 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       }
     }, 10);
 
-    window.postMessage({
-      type: postType,
-      method,
-      methodType,
-      requestId,
-      request: request.toObject(),
-    });
-    stream.on('data', response => {
+    if (!shouldSkipXhrDevtoolsEvent(method)) {
       window.postMessage({
         type: postType,
         method,
         methodType,
         requestId,
-        response: response.toObject(),
+        request: request.toObject(),
       });
+    }
+    stream.on('data', response => {
+      if (!shouldSkipXhrDevtoolsEvent(method)) {
+        window.postMessage({
+          type: postType,
+          method,
+          methodType,
+          requestId,
+          response: response.toObject(),
+        });
+      }
       if (!!this._callbacks['data']) {
         this._callbacks['data'](response);
       }
     });
     stream.on('status', status => {
       if (status.code === 0) {
-        window.postMessage({
-          type: postType,
-          method,
-          methodType,
-          requestId,
-          response: "EOF",
-        });
+        if (!shouldSkipXhrDevtoolsEvent(method)) {
+          window.postMessage({
+            type: postType,
+            method,
+            methodType,
+            requestId,
+            response: "EOF",
+          });
+        }
       }
       if (!!this._callbacks['status']) {
         this._callbacks['status'](status);
@@ -185,16 +201,18 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
     stream.on('error', error => {
       if (error.code !== 0) {
-        window.postMessage({
-          type: postType,
-          method,
-          methodType,
-          requestId,
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-        });
+        if (!shouldSkipXhrDevtoolsEvent(method)) {
+          window.postMessage({
+            type: postType,
+            method,
+            methodType,
+            requestId,
+            error: {
+              code: error.code,
+              message: error.message,
+            },
+          });
+        }
       }
       if (!!this._callbacks['error']) {
         this._callbacks['error'](error);
@@ -278,16 +296,18 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
 
       var newCallback = function (err, response) {
         if (!posted) {
-          window.postMessage({
-            type: postType,
-            method,
-            methodType: "unary",
-            requestId,
-            request: request.toObject(),
-            response: err ? undefined : response.toObject(),
-            error: err || undefined,
-            duration: Date.now() - sentAt,
-          }, "*")
+          if (!shouldSkipXhrDevtoolsEvent(method)) {
+            window.postMessage({
+              type: postType,
+              method,
+              methodType: "unary",
+              requestId,
+              request: request.toObject(),
+              response: err ? undefined : response.toObject(),
+              error: err || undefined,
+              duration: Date.now() - sentAt,
+            }, "*")
+          }
           posted = true;
         }
         callback(err, response)
@@ -396,13 +416,15 @@ setInterval(function() {
       var repeatSentAt = Date.now();
 
       // Send initial request notification
-      window.postMessage({
-        type: "__GRPCWEB_DEVTOOLS__",
-        method: grpcMethod,
-        methodType: "unary",
-        requestId: repeatRequestId,
-        request: request
-      }, "*");
+      if (!shouldSkipXhrDevtoolsEvent(grpcMethod)) {
+        window.postMessage({
+          type: "__GRPCWEB_DEVTOOLS__",
+          method: grpcMethod,
+          methodType: "unary",
+          requestId: repeatRequestId,
+          request: request
+        }, "*");
+      }
 
       // Execute fetch
       fetch(url, {
@@ -417,31 +439,35 @@ setInterval(function() {
         if (response.ok) {
           return response.arrayBuffer().then(buffer => {
             // Send successful response notification
+            if (!shouldSkipXhrDevtoolsEvent(grpcMethod)) {
+              window.postMessage({
+                type: "__GRPCWEB_DEVTOOLS__",
+                method: grpcMethod,
+                methodType: "unary",
+                requestId: repeatRequestId,
+                request: request,
+                response: response,
+                duration: Date.now() - repeatSentAt,
+              }, "*");
+            }
+
+            console.log('[Page] Response received:', buffer.byteLength, 'bytes');
+          });
+        } else {
+          // Send error response notification
+          if (!shouldSkipXhrDevtoolsEvent(grpcMethod)) {
             window.postMessage({
               type: "__GRPCWEB_DEVTOOLS__",
               method: grpcMethod,
               methodType: "unary",
               requestId: repeatRequestId,
               request: request,
-              response: response,
-              duration: Date.now() - repeatSentAt,
+              error: {
+                code: response.status,
+                message: response.statusText
+              }
             }, "*");
-
-            console.log('[Page] Response received:', buffer.byteLength, 'bytes');
-          });
-        } else {
-          // Send error response notification
-          window.postMessage({
-            type: "__GRPCWEB_DEVTOOLS__",
-            method: grpcMethod,
-            methodType: "unary",
-            requestId: repeatRequestId,
-            request: request,
-            error: {
-              code: response.status,
-              message: response.statusText
-            }
-          }, "*");
+          }
 
           console.log('[Page] Response error:', response.status, response.statusText);
         }
@@ -450,17 +476,19 @@ setInterval(function() {
         console.error('[Page] Repeat fetch failed:', err);
 
         // Send error notification
-        window.postMessage({
-          type: "__GRPCWEB_DEVTOOLS__",
-          method: grpcMethod,
-          methodType: "unary",
-          requestId: repeatRequestId,
-          request: request,
-          error: {
-            code: 0,
-            message: err.message
-          }
-        }, "*");
+        if (!shouldSkipXhrDevtoolsEvent(grpcMethod)) {
+          window.postMessage({
+            type: "__GRPCWEB_DEVTOOLS__",
+            method: grpcMethod,
+            methodType: "unary",
+            requestId: repeatRequestId,
+            request: request,
+            error: {
+              code: 0,
+              message: err.message
+            }
+          }, "*");
+        }
       });
     } catch (e) {
       console.error('[Page] Failed to execute repeat:', e);
