@@ -123,31 +123,33 @@
       });
     };
 
-    target.serverStreaming = function serverStreaming(method, request, metadata, methodInfo) {
-      const requestId = nextRequestId();
-      const requestPayload = serializeGrpcWeb(request);
-      const replayToken = registerHandle((json, _cmd) => {
-        const replayReq = reconstructGrpcWeb(request, json);
-        return origServerStreaming.call(target, method, replayReq, metadata, methodInfo);
-      });
+    if (typeof origServerStreaming === 'function') {
+      target.serverStreaming = function serverStreaming(method, request, metadata, methodInfo) {
+        const requestId = nextRequestId();
+        const requestPayload = serializeGrpcWeb(request);
+        const replayToken = registerHandle((json, _cmd) => {
+          const replayReq = reconstructGrpcWeb(request, json);
+          return origServerStreaming.call(target, method, replayReq, metadata, methodInfo);
+        });
 
-      interceptedMethods.set(method, Date.now());
-      post({ transport: TRANSPORT_GRPC, phase: 'start', method, methodType: 'server_streaming', requestId, request: requestPayload, replayToken });
+        interceptedMethods.set(method, Date.now());
+        post({ transport: TRANSPORT_GRPC, phase: 'start', method, methodType: 'server_streaming', requestId, request: requestPayload, replayToken });
 
-      const stream = origServerStreaming.call(this, method, request, metadata, methodInfo);
-      stream.on('data', resp => {
-        post({ transport: TRANSPORT_GRPC, phase: 'message', method, methodType: 'server_streaming', requestId, response: serializeGrpcWeb(resp) });
-      });
-      stream.on('status', status => {
-        if (status.code === 0) {
-          post({ transport: TRANSPORT_GRPC, phase: 'complete', method, methodType: 'server_streaming', requestId });
-        }
-      });
-      stream.on('error', err => {
-        post({ transport: TRANSPORT_GRPC, phase: 'error', method, methodType: 'server_streaming', requestId, error: { code: err.code, message: err.message } });
-      });
-      return stream;
-    };
+        const stream = origServerStreaming.call(this, method, request, metadata, methodInfo);
+        stream.on('data', resp => {
+          post({ transport: TRANSPORT_GRPC, phase: 'message', method, methodType: 'server_streaming', requestId, response: serializeGrpcWeb(resp) });
+        });
+        stream.on('status', status => {
+          if (status.code === 0) {
+            post({ transport: TRANSPORT_GRPC, phase: 'complete', method, methodType: 'server_streaming', requestId });
+          }
+        });
+        stream.on('error', err => {
+          post({ transport: TRANSPORT_GRPC, phase: 'error', method, methodType: 'server_streaming', requestId, error: { code: err.code, message: err.message } });
+        });
+        return stream;
+      };
+    }
   }
 
   // Step 5: Register window.__GRPCWEB_DEVTOOLS__
@@ -158,6 +160,7 @@
   };
 
   // Step 6: Register window.__CONNECT_WEB_DEVTOOLS__
+  const prevConnectDevtools = window.__CONNECT_WEB_DEVTOOLS__;
   window.__CONNECT_WEB_DEVTOOLS__ = (next) => async (req) => {
     const requestId = nextRequestId();
     const requestPayload = serializeConnectWeb(req.message);
@@ -174,6 +177,7 @@
     try {
       const response = await next(req);
       post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType, requestId, response: serializeConnectWeb(response.message) });
+      if (typeof prevConnectDevtools === 'function') prevConnectDevtools(next)(req);
       return response;
     } catch (error) {
       post({ transport: TRANSPORT_CONNECT, phase: 'error', method: methodName, methodType, requestId, error: { code: error.code, message: error.message } });
