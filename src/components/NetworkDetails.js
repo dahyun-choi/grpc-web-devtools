@@ -1627,13 +1627,9 @@ class NetworkDetails extends Component {
       console.warn('[Panel] No entry');
       return;
     }
-    if (!protoManager.isReady()) {
-      openSettings();
-      return;
-    }
 
-    // JS replay path — preferred when replayToken is available
-    if (entry && entry.replayToken) {
+    // JS replay path — proto 파일 없어도 동작 (replayToken 있을 때 우선)
+    if (entry.replayToken) {
       const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
       const request = ((cachedEntry && cachedEntry.request) || (entry && entry.request) || {});
       const sent = this._jsReplay(request);
@@ -1642,6 +1638,12 @@ class NetworkDetails extends Component {
         setTimeout(() => this.setState({ repeated: false }), 2000);
         return;
       }
+    }
+
+    // proto 기반 repeat (기존 로직)
+    if (!protoManager.isReady()) {
+      openSettings();
+      return;
     }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
