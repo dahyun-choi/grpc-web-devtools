@@ -1542,6 +1542,16 @@ class NetworkDetails extends Component {
 })();
 `;
 
+    // JS replay path — preferred when replayToken is available
+    if (entry && entry.replayToken && editedData && editedData.request) {
+      const sent = this._jsReplay(editedData.request);
+      if (sent) {
+        this.setState({ editSent: true });
+        setTimeout(() => this.setState({ editSent: false, editMode: false }), 2000);
+        return;
+      }
+    }
+
     chrome.devtools.inspectedWindow.eval(code, (result, exceptionInfo) => {
       if (exceptionInfo) {
         console.error('[Panel] Failed to execute fetch in page:', exceptionInfo);
@@ -1556,6 +1566,44 @@ class NetworkDetails extends Component {
     });
   };
 
+  _jsReplay = (editedJson) => {
+    const { entry } = this.props;
+    if (!entry || !entry.replayToken) return false;
+
+    const replayAttemptId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const onRejected = (event) => {
+      if (event.detail && event.detail.replayAttemptId === replayAttemptId) {
+        window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+        console.warn('[Panel] JS replay rejected:', event.detail.reason);
+        this.setState({ repeated: false, editSent: false });
+        alert(`Replay failed: ${event.detail.reason}\n\nFall back to raw fetch repeat if available.`);
+      }
+    };
+    window.addEventListener('grpc-devtools-replay-rejected', onRejected);
+    setTimeout(() => window.removeEventListener('grpc-devtools-replay-rejected', onRejected), 10000);
+
+    const port = window.__GRPCWEB_DEVTOOLS_PORT__;
+    const tabId = window.__GRPCWEB_DEVTOOLS_TAB_ID__;
+    if (!port) {
+      console.error('[Panel] No port available for JS replay');
+      return false;
+    }
+
+    port.postMessage({
+      tabId,
+      action: 'js_replay_request',
+      data: {
+        replayToken: entry.replayToken,
+        transport: entry.transport,
+        request: editedJson,
+        captureId: entry.entryId,
+        replayAttemptId,
+      },
+    });
+    return true;
+  };
+
   _repeatRequest = () => {
     console.log('[Panel] ========== REPEAT REQUEST ==========');
     const { entry, openSettings } = this.props;
@@ -1566,6 +1614,18 @@ class NetworkDetails extends Component {
     if (!protoManager.isReady()) {
       openSettings();
       return;
+    }
+
+    // JS replay path — preferred when replayToken is available
+    if (entry && entry.replayToken) {
+      const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+      const request = ((cachedEntry && cachedEntry.request) || (entry && entry.request) || {});
+      const sent = this._jsReplay(request);
+      if (sent) {
+        this.setState({ repeated: true });
+        setTimeout(() => this.setState({ repeated: false }), 2000);
+        return;
+      }
     }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
