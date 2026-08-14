@@ -29,24 +29,39 @@ gRPC Request Inspector(크롬 익스텐션)는 grpc-web/connect-web 라이브러
 - protobuf-ts 지원 (추후 필요 시 추가)
 - 기존 XHR 레벨 interceptor 제거
 - RequestGenerator 변경
+- server_streaming RPC replay (단방향 unary만 지원; streaming은 replay 시 stream 핸들 관리 복잡도 높음)
 
 ---
 
 ## 아키텍처
 
 ```
-[페이지 JS 레이어]
-  js-client-interceptor.js     ← 신규 (monkey-patch, JS 객체 레벨)
-  grpc-web-interceptor.js      ← 기존 유지 (XHR/fetch 레벨, 안전망)
-       ↓ window.postMessage(__GRPCWEB_DEVTOOLS__)
-[content-script.js]
-       ↓ chrome.runtime.port
-[background.js]                ← 변경 없음
-       ↓
-[DevTools 패널]
+[페이지 MAIN world]
+  js-client-interceptor.js     ← 신규 (monkey-patch, JS 객체 레벨, MAIN world)
+  grpc-web-interceptor.js      ← 기존 유지 (XHR/fetch 레벨, 안전망, MAIN world)
+       ↓ window.postMessage
+[content-script.js]            ← ISOLATED world, 메시지 relay
+       ↓ chrome.runtime.connect (port)
+[background.js]                ← JS replay 메시지 라우팅 추가
+       ↓ port → DevTools page
+[DevTools 패널 (devtools.js)]
   replayToken 있음 → JS replay 경로 (인증 자동)
-  replayToken 없음 → 기존 raw fetch 경로 유지
+  replayToken 없음 → 기존 data-* attribute + raw fetch 경로 유지
 ```
+
+### MAIN world 주입 방법
+
+`content-script.js`는 기존처럼 `<script src="...">` 태그를 동적으로 DOM에 삽입해 `js-client-interceptor.js`를 페이지의 MAIN world에 주입한다. Content script 자체는 ISOLATED world에서 동작하므로, 페이지의 gRPC 클라이언트에 직접 접근하지 않으며 `window.postMessage`로만 통신한다.
+
+### background.js JS replay 라우팅
+
+MV3에서 DevTools 패널은 content script와 직접 통신할 수 없다. 경로:
+```
+DevTools page → chrome.runtime.connect (port "panel") → background.js
+background.js → 해당 탭의 content port로 relay
+content script → window.postMessage → 페이지
+```
+background.js에 `js_replay_request` / `js_replay_result` action 처리가 추가된다.
 
 ---
 
@@ -56,11 +71,23 @@ gRPC Request Inspector(크롬 익스텐션)는 grpc-web/connect-web 라이브러
 
 **책임:** grpc-web/connect-web 클라이언트 메서드 monkey-patch, 요청 캡처, replay 처리
 
+**라이브러리 감지 전략:**
+
+두 라이브러리는 각각 다른 전역 훅을 사용한다. `js-client-interceptor.js`는 두 전역을 등록하고, 라이브러리 측에서 알아서 호출한다. 별도의 duck-typing 탐지 불필요.
+
+- **grpc-web:** 앱 코드가 `window.__GRPCWEB_DEVTOOLS__(clients)` 를 호출하면 instrumentClient()가 각 client의 `rpcCall`, `serverStreaming`, `unaryCall`을 monkey-patch.
+- **connect-web:** `window.__CONNECT_WEB_DEVTOOLS__`를 interceptor factory로 등록. 앱이 transport 설정 시 이 함수를 호출.
+
 **전역 등록:**
 ```js
 window.__GRPCWEB_DEVTOOLS__ = function(clients) { ... }   // grpc-web
 window.__CONNECT_WEB_DEVTOOLS__ = next => req => ...      // connect-web
 ```
+
+**직렬화 계약:**
+- grpc-web: `request.toObject({ defaults: true })` — bytes 필드는 base64 문자열, enum은 숫자
+- connect-web: `request.toJson({ emitDefaultValues: true })` — JSON 표준 표현
+- 두 경우 모두 `JSON.stringify` 가능한 plain object로 변환 후 postMessage 전달
 
 **캡처 시 postMessage 포맷:**
 ```js
@@ -70,17 +97,29 @@ window.postMessage({
   method,
   methodType: "unary" | "server_streaming",
   requestId,
-  request,       // JS 객체 (toObject() 결과)
+  request,       // plain object (toObject/toJson 결과, JSON 직렬화 가능)
   replayToken,   // 랜덤 토큰, registry에 invoke 클로저 저장
   __jsIntercepted: true,   // XHR 레벨 중복 방지 마커
   phase: "start" | "complete" | "error" | "message",
 }, "*");
 ```
 
+**replayToken 정의:**
+- 생성 주체: `js-client-interceptor.js` — 요청 캡처 시점에 `crypto.getRandomValues`로 생성하는 랜덤 문자열
+- 값 공간: 예) `"3f2a1b-9c8d-..."` (4×Uint32 hex join)
+- 생명주기: 캡처 → postMessage의 `replayToken` 필드로 전달 → `network.js` state에 저장 → Edit & Repeat 시 DevTools 패널이 이 값을 replay 요청에 포함 → interceptor의 `registry` Map에서 조회
+- `registry`는 `Map<replayToken, { invoke: Function }>` 구조
+
+**역직렬화 계약 (replay 시 JSON → proto Message 재구성):**
+- invoke 클로저는 캡처 시점의 `originalRequest` 참조를 보유함
+- **grpc-web:** `new originalRequest.constructor()` 인스턴스 생성 후 JSON key를 setter로 적용 (grpc-web은 `fromObject` 미제공)
+- **connect-web:** `originalRequest.constructor.fromJson(editedJson)` 또는 `new Constructor(editedJson)` — 라이브러리가 제공하는 방법 우선 사용
+- 두 경우 모두 invoke 클로저가 재구성 책임을 가지며, 재구성된 Message 객체를 원본 gRPC 메서드에 전달
+
 **Replay 흐름:**
 1. `window.addEventListener("message")` 에서 `__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__` 타입 수신
 2. `registry.get(replayToken).invoke(editedJson, command)` 호출
-3. invoke 내부: `originalRequest.constructor.fromJson(editedJson)` → 원본 gRPC 메서드 재호출
+3. invoke 내부: editedJson → proto Message 재구성 → 원본 gRPC 메서드 재호출 (클로저가 method, client, metadata 모두 보유)
 4. ACK 또는 REJECTED를 `window.postMessage`로 반환
 
 **Registry 관리:**
@@ -179,5 +218,6 @@ DevTools 패널: 새 항목으로 표시
 | `public/js-client-interceptor.js` | 신규 생성 |
 | `public/content-script.js` | 수정 (주입 추가, relay 로직) |
 | `public/manifest.json` | 수정 (web_accessible_resources) |
+| `public/background.js` | 수정 (js_replay_request/result 라우팅 추가) |
 | `src/components/NetworkDetails.js` | 수정 (JS replay 경로 분기) |
-| `src/state/network.js` | 수정 (replayToken 필드 추가) |
+| `src/state/network.js` | 수정 (replayToken, transport 필드 추가) |
