@@ -753,6 +753,17 @@ function _onMessageRecived({ action, data }) {
       }
     }
     console.log('[Index] ================================================');
+  } else if (action === 'js_replay_ack') {
+    // No-op: the new gRPC call appears as a normal gRPCNetworkCall entry
+    console.log('[Index] JS replay ACK received');
+  } else if (action === 'js_replay_rejected') {
+    console.warn('[Index] JS replay REJECTED:', data && data.reason);
+    window.dispatchEvent(new CustomEvent('grpc-devtools-replay-rejected', {
+      detail: {
+        reason: (data && data.reason) || 'Replay failed',
+        replayAttemptId: data && data.replayAttemptId,
+      },
+    }));
   }
 }
 
