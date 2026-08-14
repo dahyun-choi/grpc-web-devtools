@@ -167,15 +167,16 @@
       return next({ ...req, message: replayReq });
     });
 
+    const methodType = req.stream ? 'server_streaming' : 'unary';
     interceptedMethods.set(methodName, Date.now());
-    post({ transport: TRANSPORT_CONNECT, phase: 'start', method: methodName, methodType: req.stream ? 'server_streaming' : 'unary', requestId, request: requestPayload, replayToken });
+    post({ transport: TRANSPORT_CONNECT, phase: 'start', method: methodName, methodType, requestId, request: requestPayload, replayToken });
 
     try {
       const response = await next(req);
-      post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType: 'unary', requestId, response: serializeConnectWeb(response.message) });
+      post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType, requestId, response: serializeConnectWeb(response.message) });
       return response;
     } catch (error) {
-      post({ transport: TRANSPORT_CONNECT, phase: 'error', method: methodName, methodType: 'unary', requestId, error: { code: error.code, message: error.message } });
+      post({ transport: TRANSPORT_CONNECT, phase: 'error', method: methodName, methodType, requestId, error: { code: error.code, message: error.message } });
       throw error;
     }
   };
