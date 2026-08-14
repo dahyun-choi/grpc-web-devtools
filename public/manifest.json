@@ -19,7 +19,8 @@
     {
       "resources": [
         "grpc-web-interceptor.js",
-        "connect-web-interceptor.js"
+        "connect-web-interceptor.js",
+        "js-client-interceptor.js"
       ],
       "matches": [
         "<all_urls>"
