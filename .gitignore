@@ -54,3 +54,6 @@ check-cache.js
 debug-helper.html
 verify-build.js
 BUILD_SUMMARY.md
+
+# worktrees
+.worktrees/
