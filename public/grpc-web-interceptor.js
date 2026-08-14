@@ -446,7 +446,7 @@ setInterval(function() {
                 methodType: "unary",
                 requestId: repeatRequestId,
                 request: request,
-                response: response,
+                response: {},
                 duration: Date.now() - repeatSentAt,
               }, "*");
             }
