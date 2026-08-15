@@ -288,12 +288,8 @@ cs.onload = function () {
 };
 (document.head || document.documentElement).appendChild(cs);
 
-// Inject JS client interceptor LAST so it overwrites window.__CONNECT_WEB_DEVTOOLS__
-// after connect-web-interceptor.js registers it, enabling proper capture with replayToken.
-var jsClientScript = document.createElement('script');
-jsClientScript.src = chrome.runtime.getURL('js-client-interceptor.js');
-jsClientScript.onload = function() { this.remove(); };
-(document.head || document.documentElement).appendChild(jsClientScript);
+// js-client-interceptor.js is injected via manifest content_scripts (world: "MAIN")
+// so it runs synchronously at document_start before any page script.
 
 var port;
 var fallbackRequestId = 1;
