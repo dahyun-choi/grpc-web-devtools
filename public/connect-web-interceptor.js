@@ -36,12 +36,42 @@ if (typeof window.__CONNECT_WEB_DEVTOOLS__ === 'undefined') {
   // Capture pending raw request and associate with requestId
   setTimeout(() => {
     if (window.__grpcWebDevtoolsPendingRequest) {
+      const rawReq = window.__grpcWebDevtoolsPendingRequest;
       if (window.__grpcWebDevtoolsRawRequests) {
-        window.__grpcWebDevtoolsRawRequests.set(requestId, window.__grpcWebDevtoolsPendingRequest);
-        console.log('[Connect-web] Associated raw request with ID:', requestId);
-      } else {
-        console.error('[Connect-web] __grpcWebDevtoolsRawRequests not found on window');
+        window.__grpcWebDevtoolsRawRequests.set(requestId, rawReq);
       }
+
+      // Forward raw body to panel so Repeat can find it in rawRequestsCache.
+      // DebuggerCapture used to do this, but it is now lazy-attached.
+      let bodyBase64 = null;
+      try {
+        if (rawReq.body instanceof ArrayBuffer) {
+          const bytes = new Uint8Array(rawReq.body);
+          let bin = '';
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          bodyBase64 = btoa(bin);
+        } else if (rawReq.body instanceof Uint8Array) {
+          let bin = '';
+          for (let i = 0; i < rawReq.body.length; i++) bin += String.fromCharCode(rawReq.body[i]);
+          bodyBase64 = btoa(bin);
+        }
+      } catch (_) {}
+
+      if (bodyBase64) {
+        window.postMessage({
+          type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+          requestId: requestId,
+          rawRequest: {
+            url: rawReq.url,
+            method: rawReq.method,
+            headers: rawReq.headers || {},
+            body: bodyBase64,
+            encoding: 'base64',
+            timestamp: rawReq.timestamp,
+          }
+        }, '*');
+      }
+
       delete window.__grpcWebDevtoolsPendingRequest;
     }
   }, 10);
