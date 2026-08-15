@@ -1452,6 +1452,11 @@ class NetworkDetails extends Component {
     const bodyBase64 = arrayBufferToBase64(body);
     console.log('[Panel] Body as base64, length:', bodyBase64.length);
 
+    // Lazy-attach debugger for future requests (shows banner only on first raw-fetch repeat)
+    if (window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__) {
+      window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__().catch(() => {});
+    }
+
     // Execute fetch in PAGE CONTEXT using inspectedWindow.eval
     // This is critical - fetch must run in page context, not panel context
     const code = `
@@ -1811,6 +1816,11 @@ class NetworkDetails extends Component {
       } catch (e) {
         console.warn('[Panel] Could not decode body:', e);
       }
+    }
+
+    // Lazy-attach debugger for future requests (shows banner only on first raw-fetch repeat)
+    if (window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__) {
+      window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__().catch(() => {});
     }
 
     // Execute fetch in PAGE CONTEXT using inspectedWindow.eval
