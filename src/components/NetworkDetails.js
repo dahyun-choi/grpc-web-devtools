@@ -1645,12 +1645,6 @@ class NetworkDetails extends Component {
       }
     }
 
-    // proto 기반 repeat (기존 로직)
-    if (!protoManager.isReady()) {
-      openSettings();
-      return;
-    }
-
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
     const { requestId, method, request } = entryToRender;
@@ -1742,14 +1736,11 @@ class NetworkDetails extends Component {
     }
 
     if (!rawRequest) {
-      console.error('[Panel] Raw request not found after all strategies');
-      console.warn('[Panel] Cache contents:', Array.from(rawCache.entries()).map(([k, v]) => ({
-        id: k,
-        type: typeof k,
-        url: v.url
-      })));
-
-      // NO FALLBACK: Repeat requires raw request body
+      // Raw body not captured — fall back to proto-based repeat if available
+      if (!protoManager.isReady()) {
+        openSettings();
+        return;
+      }
       console.error('[Panel] Cannot repeat: Raw request body not available');
       alert(
         'Cannot repeat this request: Original request body is not available.\n\n' +
