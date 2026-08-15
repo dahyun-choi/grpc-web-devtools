@@ -16,12 +16,58 @@
   window.fetch = function(url, options) {
     if (options && options.body) {
       const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
+      const ts = Date.now();
+
+      // Convert Headers object to plain object
+      var headersObj = {};
+      try {
+        if (options.headers && typeof options.headers.entries === 'function') {
+          for (var _e of options.headers.entries()) headersObj[_e[0]] = _e[1];
+        } else if (options.headers && typeof options.headers === 'object') {
+          headersObj = options.headers;
+        }
+      } catch (_) {}
+
+      // Convert body to base64 and post RAW_REQUEST event immediately.
+      // This ensures the panel's rawCache has the body for Repeat, even without
+      // DebuggerCapture attached.
+      var bodyBase64 = null;
+      try {
+        var _body = options.body;
+        if (_body instanceof Uint8Array) {
+          var _bin = '';
+          for (var _i = 0; _i < _body.length; _i++) _bin += String.fromCharCode(_body[_i]);
+          bodyBase64 = btoa(_bin);
+        } else if (_body instanceof ArrayBuffer) {
+          var _bytes = new Uint8Array(_body);
+          var _bin2 = '';
+          for (var _j = 0; _j < _bytes.length; _j++) _bin2 += String.fromCharCode(_bytes[_j]);
+          bodyBase64 = btoa(_bin2);
+        }
+      } catch (_) {}
+
+      if (bodyBase64) {
+        window.postMessage({
+          type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+          requestId: ts,
+          rawRequest: {
+            url: urlStr,
+            method: options.method || 'POST',
+            headers: headersObj,
+            body: bodyBase64,
+            encoding: 'base64',
+            timestamp: ts,
+          }
+        }, '*');
+      }
+
+      // Also store for legacy interceptor pickup
       window.__grpcWebDevtoolsPendingRequest = {
         method: options.method || 'POST',
         url: urlStr,
-        headers: options.headers || {},
+        headers: headersObj,
         body: options.body,
-        timestamp: Date.now(),
+        timestamp: ts,
       };
     }
     return _origFetch.apply(this, arguments);
