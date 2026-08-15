@@ -9,6 +9,24 @@
   const MAX_HANDLES = 100;
   const INSTRUMENTED = "__grpcJsInterceptorInstrumented__";
 
+  // Patch window.fetch HERE (synchronous, MAIN world, document_start) so the patch
+  // is in place before connect-web or any page script captures the fetch reference.
+  // grpc-web-interceptor.js does the same but via async <script> tag — too late.
+  const _origFetch = window.fetch;
+  window.fetch = function(url, options) {
+    if (options && options.body) {
+      const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
+      window.__grpcWebDevtoolsPendingRequest = {
+        method: options.method || 'POST',
+        url: urlStr,
+        headers: options.headers || {},
+        body: options.body,
+        timestamp: Date.now(),
+      };
+    }
+    return _origFetch.apply(this, arguments);
+  };
+
   if (typeof window.__grpcWebDevtoolsRequestId === 'undefined') {
     window.__grpcWebDevtoolsRequestId = 1;
   }
