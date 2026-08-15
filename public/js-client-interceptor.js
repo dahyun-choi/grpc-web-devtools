@@ -160,10 +160,10 @@
   };
 
   // Step 6: Register window.__CONNECT_WEB_DEVTOOLS__
-  // Injected last (after connect-web-interceptor.js), so this overwrites the previous
-  // registration. No chaining — we are a superset of the previous interceptor and
-  // chaining would cause duplicate DevTools entries.
-  window.__CONNECT_WEB_DEVTOOLS__ = (next) => async (req) => {
+  // Use Object.defineProperty so our handler wins regardless of script execution order.
+  // Dynamically inserted <script> tags are async — connect-web-interceptor.js may run
+  // after us and overwrite a plain assignment. The setter silently ignores such writes.
+  var _cwFactory = (next) => async (req) => {
     const requestId = nextRequestId();
     const requestPayload = serializeConnectWeb(req.message);
     const methodName = req.method && req.method.name ? req.method.name : String(req.url || '');
@@ -185,6 +185,12 @@
       throw error;
     }
   };
+  Object.defineProperty(window, '__CONNECT_WEB_DEVTOOLS__', {
+    get: function() { return _cwFactory; },
+    set: function() { /* ignored — js-client-interceptor owns this property */ },
+    configurable: true,
+    enumerable: true,
+  });
 
   // Step 7: Replay listener + cleanup
   function handleReplay(event) {
