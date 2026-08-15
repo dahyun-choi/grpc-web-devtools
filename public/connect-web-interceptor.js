@@ -82,11 +82,11 @@ if (typeof window.__CONNECT_WEB_DEVTOOLS__ === 'undefined') {
   };
 
   window.__CONNECT_WEB_DEVTOOLS__ = interceptor;
-
-  /**
-   * Since we are loading inject.js as a script, the order at which it is loaded is not guaranteed.
-   * So we will publish a custom event that can be used, to be used to assign the interceptor.
-   */
-  const readyEvent = new CustomEvent("connect-web-dev-tools-ready");
-  window.dispatchEvent(readyEvent);
 }
+
+// Always dispatch ready event — js-client-interceptor.js may have already set
+// window.__CONNECT_WEB_DEVTOOLS__ (MAIN world, runs before page scripts), so the
+// if-block above is skipped. Dispatching here ensures the app's listener always fires
+// and picks up whichever interceptor is currently registered.
+const readyEvent = new CustomEvent("connect-web-dev-tools-ready");
+window.dispatchEvent(readyEvent);
