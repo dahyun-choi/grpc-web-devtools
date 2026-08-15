@@ -1039,12 +1039,8 @@ class NetworkDetails extends Component {
   };
 
   _startEdit = () => {
-    const { entry, openSettings } = this.props;
+    const { entry } = this.props;
     if (!entry) return;
-    if (!protoManager.isReady()) {
-      openSettings();
-      return;
-    }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
