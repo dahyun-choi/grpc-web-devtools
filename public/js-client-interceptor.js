@@ -160,27 +160,24 @@
   };
 
   // Step 6: Register window.__CONNECT_WEB_DEVTOOLS__
-  const prevConnectDevtools = window.__CONNECT_WEB_DEVTOOLS__;
+  // Injected last (after connect-web-interceptor.js), so this overwrites the previous
+  // registration. No chaining — we are a superset of the previous interceptor and
+  // chaining would cause duplicate DevTools entries.
   window.__CONNECT_WEB_DEVTOOLS__ = (next) => async (req) => {
-    // Chain previous interceptor: our interceptor wraps prev, not bypasses it
-    const effectiveNext = typeof prevConnectDevtools === 'function'
-      ? prevConnectDevtools(next)
-      : next;
-
     const requestId = nextRequestId();
     const requestPayload = serializeConnectWeb(req.message);
     const methodName = req.method && req.method.name ? req.method.name : String(req.url || '');
     const methodType = req.stream ? 'server_streaming' : 'unary';
     const replayToken = registerHandle((json, _cmd) => {
       const replayReq = reconstructConnectWeb(req.message, json);
-      return effectiveNext({ ...req, message: replayReq });
+      return next({ ...req, message: replayReq });
     });
 
     interceptedMethods.set(methodName, Date.now());
     post({ transport: TRANSPORT_CONNECT, phase: 'start', method: methodName, methodType, requestId, request: requestPayload, replayToken });
 
     try {
-      const response = await effectiveNext(req);
+      const response = await next(req);
       post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType, requestId, response: serializeConnectWeb(response.message) });
       return response;
     } catch (error) {

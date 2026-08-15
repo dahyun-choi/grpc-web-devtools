@@ -1,11 +1,5 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-// Inject JS client interceptor FIRST (before XHR-level interceptor)
-var jsClientScript = document.createElement('script');
-jsClientScript.src = chrome.runtime.getURL('js-client-interceptor.js');
-jsClientScript.onload = function() { this.remove(); };
-(document.head || document.documentElement).appendChild(jsClientScript);
-
 // Inject grpc-web interceptor script
 var grpcWebScript = document.createElement('script');
 grpcWebScript.src = chrome.runtime.getURL('grpc-web-interceptor.js');
@@ -293,6 +287,13 @@ cs.onload = function () {
   this.remove();
 };
 (document.head || document.documentElement).appendChild(cs);
+
+// Inject JS client interceptor LAST so it overwrites window.__CONNECT_WEB_DEVTOOLS__
+// after connect-web-interceptor.js registers it, enabling proper capture with replayToken.
+var jsClientScript = document.createElement('script');
+jsClientScript.src = chrome.runtime.getURL('js-client-interceptor.js');
+jsClientScript.onload = function() { this.remove(); };
+(document.head || document.documentElement).appendChild(jsClientScript);
 
 var port;
 var fallbackRequestId = 1;
