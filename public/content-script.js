@@ -438,11 +438,17 @@ function sendGRPCNetworkCall(data) {
   }
   setupPortIfNeeded();
   if (port) {
-    port.postMessage({
-      action: "gRPCNetworkCall",
-      target: "panel",
-      data,
-    });
+    try {
+      port.postMessage({
+        action: "gRPCNetworkCall",
+        target: "panel",
+        data,
+      });
+    } catch (err) {
+      console.error('[Content Script] sendGRPCNetworkCall failed:', err.message, 'requestId:', data.requestId, 'method:', data.method && data.method.split('/').pop());
+    }
+  } else {
+    console.warn('[Content Script] No port for gRPCNetworkCall, requestId:', data.requestId);
   }
 }
 
