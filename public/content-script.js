@@ -445,10 +445,9 @@ function sendGRPCNetworkCall(data) {
         data,
       });
     } catch (err) {
-      console.error('[Content Script] sendGRPCNetworkCall failed:', err.message, 'requestId:', data.requestId, 'method:', data.method && data.method.split('/').pop());
+      // port.postMessage can throw on non-serializable data or disconnected port
+      console.warn('[Content Script] gRPCNetworkCall dropped:', err.message);
     }
-  } else {
-    console.warn('[Content Script] No port for gRPCNetworkCall, requestId:', data.requestId);
   }
 }
 
