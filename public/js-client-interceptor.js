@@ -279,8 +279,8 @@
     }
     try {
       const result = handle.invoke(editedJson, data);
-      const p = result && typeof result.then === 'function' ? result : Promise.resolve();
-      p.catch(() => {});
+      // Wrap in Promise.resolve() — protobuf-ts UnaryCall is PromiseLike but lacks .catch()
+      Promise.resolve(result).catch(() => {});
       window.postMessage({ type: REPLAY_ACK_TYPE, ...base }, '*');
     } catch (error) {
       window.postMessage({ type: REPLAY_REJECTED_TYPE, ...base, reason: error.message || 'Replay failed' }, '*');
