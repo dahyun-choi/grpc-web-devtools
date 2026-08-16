@@ -290,4 +290,90 @@
   window.addEventListener('message', handleReplay, false);
   window.addEventListener('pagehide', () => registry.clear(), false);
   window.addEventListener('unload', () => registry.clear(), false);
+
+  // ── protobuf-ts devtools API ──────────────────────────────────────────────
+  // Some apps (e.g. those using shucle-react-components) check for
+  // window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__ and delegate interceptor calls to it.
+  // Registering here gives us method.I / method.O access — enabling Edit & Replay
+  // without uploading proto files.
+  const TRANSPORT_PROTOBUF_TS = 'protobuf-ts';
+
+  function ptInterceptUnary(context) {
+    const { next, method, input, options } = context;
+    const requestId = nextRequestId();
+    const baseUrl = (options && options.baseUrl) || '';
+    const methodName = baseUrl.replace(/\/$/, '') + '/' + method.service.typeName + '/' + method.name;
+
+    let requestPayload;
+    try { requestPayload = method.I.toJson(input, options && options.jsonOptions); }
+    catch (_) { requestPayload = {}; }
+
+    const replayToken = registerHandle((editedJson) => {
+      let newInput;
+      try { newInput = method.I.fromJson(editedJson, options && options.jsonOptions); }
+      catch (e) { throw new Error('Request reconstruction failed: ' + (e.message || e)); }
+      return ptInterceptUnary({ next, method, input: newInput, options });
+    });
+
+    interceptedMethods.set(methodName, Date.now());
+    post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'unary', requestId, request: requestPayload, replayToken });
+
+    const call = next(method, input, options);
+    call.then(
+      (finishedCall) => {
+        let resp;
+        try { resp = method.O.toJson(finishedCall.response, options && options.jsonOptions); }
+        catch (_) { resp = null; }
+        post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'unary', requestId, response: resp });
+      },
+      (error) => {
+        post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'error', method: methodName, methodType: 'unary', requestId, error: { code: error.code, message: error.message } });
+      }
+    );
+
+    return call;
+  }
+
+  function ptInterceptServerStreaming(context) {
+    const { next, method, input, options } = context;
+    const requestId = nextRequestId();
+    const baseUrl = (options && options.baseUrl) || '';
+    const methodName = baseUrl.replace(/\/$/, '') + '/' + method.service.typeName + '/' + method.name;
+
+    let requestPayload;
+    try { requestPayload = method.I.toJson(input, options && options.jsonOptions); }
+    catch (_) { requestPayload = {}; }
+
+    interceptedMethods.set(methodName, Date.now());
+    post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'server_streaming', requestId, request: requestPayload });
+
+    const call = next(method, input, options);
+    call.responses.onMessage((message) => {
+      let resp;
+      try { resp = method.O.toJson(message, options && options.jsonOptions); }
+      catch (_) { resp = null; }
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'message', method: methodName, methodType: 'server_streaming', requestId, response: resp });
+    });
+    call.responses.onError((error) => {
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'error', method: methodName, methodType: 'server_streaming', requestId, error: { code: error.code, message: error.message } });
+    });
+    call.responses.onComplete(() => {
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'server_streaming', requestId });
+    });
+
+    return call;
+  }
+
+  const _ptApi = Object.freeze({
+    protocolVersion: 1,
+    interceptUnary: ptInterceptUnary,
+    interceptServerStreaming: ptInterceptServerStreaming,
+  });
+
+  Object.defineProperty(window, '__GRPCWEB_DEVTOOLS_PROTOBUF_TS__', {
+    get: function() { return _ptApi; },
+    set: function() {},
+    configurable: true,
+    enumerable: true,
+  });
 })();
