@@ -428,6 +428,7 @@ function handlePortMessage(message) {
       request: data.request,
       captureId: data.captureId,
       replayAttemptId: data.replayAttemptId,
+      isEditRepeat: data.isEditRepeat,
     }, '*');
   }
 }

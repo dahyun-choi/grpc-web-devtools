@@ -298,8 +298,10 @@
   // without uploading proto files.
   const TRANSPORT_PROTOBUF_TS = 'protobuf-ts';
 
-  function ptInterceptUnary(context) {
+  function ptInterceptUnary(context, replayFlags) {
     const { next, method, input, options } = context;
+    const isRepeat = !!(replayFlags && (replayFlags.isRepeat || replayFlags.isEditRepeat));
+    const isEditRepeat = !!(replayFlags && replayFlags.isEditRepeat);
     const requestId = nextRequestId();
     const baseUrl = (options && options.baseUrl) || '';
     const methodName = baseUrl.replace(/\/$/, '') + '/' + method.service.typeName + '/' + method.name;
@@ -308,15 +310,21 @@
     try { requestPayload = method.I.toJson(input, options && options.jsonOptions); }
     catch (_) { requestPayload = {}; }
 
-    const replayToken = registerHandle((editedJson) => {
+    const replayToken = registerHandle((editedJson, cmd) => {
       let newInput;
       try { newInput = method.I.fromJson(editedJson, options && options.jsonOptions); }
       catch (e) { throw new Error('Request reconstruction failed: ' + (e.message || e)); }
-      return ptInterceptUnary({ next, method, input: newInput, options });
+      return ptInterceptUnary({ next, method, input: newInput, options }, {
+        isRepeat: !cmd.isEditRepeat,
+        isEditRepeat: !!cmd.isEditRepeat,
+      });
     });
 
+    const startPayload = { transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'unary', requestId, request: requestPayload, replayToken };
+    if (isRepeat) startPayload.isRepeat = true;
+    if (isEditRepeat) startPayload.isEditRepeat = true;
     interceptedMethods.set(methodName, Date.now());
-    post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'unary', requestId, request: requestPayload, replayToken });
+    post(startPayload);
 
     const call = next(method, input, options);
     call.then(
@@ -324,7 +332,10 @@
         let resp;
         try { resp = method.O.toJson(finishedCall.response, options && options.jsonOptions); }
         catch (_) { resp = null; }
-        post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'unary', requestId, response: resp });
+        const completePayload = { transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'unary', requestId, response: resp };
+        if (isRepeat) completePayload.isRepeat = true;
+        if (isEditRepeat) completePayload.isEditRepeat = true;
+        post(completePayload);
       },
       (error) => {
         post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'error', method: methodName, methodType: 'unary', requestId, error: { code: error.code, message: error.message } });

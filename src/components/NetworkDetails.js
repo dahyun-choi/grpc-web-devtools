@@ -1548,7 +1548,7 @@ class NetworkDetails extends Component {
 
     // JS replay path — preferred when replayToken is available
     if (entry && entry.replayToken && editedData && editedData.request) {
-      const sent = this._jsReplay(editedData.request);
+      const sent = this._jsReplay(editedData.request, true);
       if (sent) {
         this.setState({ editSent: true });
         setTimeout(() => this.setState({ editSent: false, editMode: false }), 2000);
@@ -1570,7 +1570,7 @@ class NetworkDetails extends Component {
     });
   };
 
-  _jsReplay = (editedJson) => {
+  _jsReplay = (editedJson, isEditRepeat = false) => {
     const { entry } = this.props;
     if (!entry || !entry.replayToken) return false;
 
@@ -1616,6 +1616,7 @@ class NetworkDetails extends Component {
         request: editedJson,
         captureId: entry.entryId,
         replayAttemptId,
+        isEditRepeat: !!isEditRepeat,
       },
     });
     return true;
