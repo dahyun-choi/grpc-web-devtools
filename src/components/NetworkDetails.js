@@ -139,6 +139,7 @@ class NetworkDetails extends Component {
   jsonContainerRef = React.createRef();
   containerRef = React.createRef();
   highlightTimeout = null;
+  _jsReplayCleanups = [];
 
   componentDidUpdate(prevProps, prevState) {
     const prevEntryId = prevProps.entry?.entryId ?? null;
@@ -209,6 +210,8 @@ class NetworkDetails extends Component {
     }
     document.removeEventListener('mousemove', this._handleMouseMove);
     document.removeEventListener('mouseup', this._handleMouseUp);
+    this._jsReplayCleanups.forEach(cleanup => cleanup());
+    this._jsReplayCleanups = [];
   }
 
   render() {
@@ -1036,12 +1039,8 @@ class NetworkDetails extends Component {
   };
 
   _startEdit = () => {
-    const { entry, openSettings } = this.props;
+    const { entry } = this.props;
     if (!entry) return;
-    if (!protoManager.isReady()) {
-      openSettings();
-      return;
-    }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
@@ -1449,6 +1448,11 @@ class NetworkDetails extends Component {
     const bodyBase64 = arrayBufferToBase64(body);
     console.log('[Panel] Body as base64, length:', bodyBase64.length);
 
+    // Lazy-attach debugger for future requests (shows banner only on first raw-fetch repeat)
+    if (window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__) {
+      window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__().catch(() => {});
+    }
+
     // Execute fetch in PAGE CONTEXT using inspectedWindow.eval
     // This is critical - fetch must run in page context, not panel context
     const code = `
@@ -1542,6 +1546,16 @@ class NetworkDetails extends Component {
 })();
 `;
 
+    // JS replay path — preferred when replayToken is available
+    if (entry && entry.replayToken && editedData && editedData.request) {
+      const sent = this._jsReplay(editedData.request, true);
+      if (sent) {
+        this.setState({ editSent: true });
+        setTimeout(() => this.setState({ editSent: false, editMode: false }), 2000);
+        return;
+      }
+    }
+
     chrome.devtools.inspectedWindow.eval(code, (result, exceptionInfo) => {
       if (exceptionInfo) {
         console.error('[Panel] Failed to execute fetch in page:', exceptionInfo);
@@ -1556,6 +1570,58 @@ class NetworkDetails extends Component {
     });
   };
 
+  _jsReplay = (editedJson, isEditRepeat = false) => {
+    const { entry } = this.props;
+    if (!entry || !entry.replayToken) return false;
+
+    const replayAttemptId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const onRejected = (event) => {
+      if (event.detail && event.detail.replayAttemptId === replayAttemptId) {
+        cleanup();
+        this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
+        console.warn('[Panel] JS replay rejected:', event.detail.reason);
+        this.setState({ repeated: false, editSent: false });
+        alert(`Replay failed: ${event.detail.reason}\n\nFall back to raw fetch repeat if available.`);
+      }
+    };
+
+    window.addEventListener('grpc-devtools-replay-rejected', onRejected);
+    const timerId = setTimeout(() => {
+      window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+      this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
+    }, 10000);
+
+    const cleanup = () => {
+      window.removeEventListener('grpc-devtools-replay-rejected', onRejected);
+      clearTimeout(timerId);
+    };
+    this._jsReplayCleanups.push(cleanup);
+
+    const port = window.__GRPCWEB_DEVTOOLS_PORT__;
+    const tabId = window.__GRPCWEB_DEVTOOLS_TAB_ID__;
+    if (!port) {
+      console.error('[Panel] No port available for JS replay');
+      cleanup();
+      this._jsReplayCleanups = this._jsReplayCleanups.filter(c => c !== cleanup);
+      return false;
+    }
+
+    port.postMessage({
+      tabId,
+      action: 'js_replay_request',
+      data: {
+        replayToken: entry.replayToken,
+        transport: entry.transport,
+        request: editedJson,
+        captureId: entry.entryId,
+        replayAttemptId,
+        isEditRepeat: !!isEditRepeat,
+      },
+    });
+    return true;
+  };
+
   _repeatRequest = () => {
     console.log('[Panel] ========== REPEAT REQUEST ==========');
     const { entry, openSettings } = this.props;
@@ -1563,9 +1629,17 @@ class NetworkDetails extends Component {
       console.warn('[Panel] No entry');
       return;
     }
-    if (!protoManager.isReady()) {
-      openSettings();
-      return;
+
+    // JS replay path — proto 파일 없어도 동작 (replayToken 있을 때 우선)
+    if (entry.replayToken) {
+      const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+      const request = ((cachedEntry && cachedEntry.request) || (entry && entry.request) || {});
+      const sent = this._jsReplay(request);
+      if (sent) {
+        this.setState({ repeated: true });
+        setTimeout(() => this.setState({ repeated: false }), 2000);
+        return;
+      }
     }
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
@@ -1659,14 +1733,11 @@ class NetworkDetails extends Component {
     }
 
     if (!rawRequest) {
-      console.error('[Panel] Raw request not found after all strategies');
-      console.warn('[Panel] Cache contents:', Array.from(rawCache.entries()).map(([k, v]) => ({
-        id: k,
-        type: typeof k,
-        url: v.url
-      })));
-
-      // NO FALLBACK: Repeat requires raw request body
+      // Raw body not captured — fall back to proto-based repeat if available
+      if (!protoManager.isReady()) {
+        openSettings();
+        return;
+      }
       console.error('[Panel] Cannot repeat: Raw request body not available');
       alert(
         'Cannot repeat this request: Original request body is not available.\n\n' +
@@ -1733,6 +1804,11 @@ class NetworkDetails extends Component {
       } catch (e) {
         console.warn('[Panel] Could not decode body:', e);
       }
+    }
+
+    // Lazy-attach debugger for future requests (shows banner only on first raw-fetch repeat)
+    if (window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__) {
+      window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__().catch(() => {});
     }
 
     // Execute fetch in PAGE CONTEXT using inspectedWindow.eval

@@ -35,6 +35,30 @@ chrome.runtime.onConnect.addListener(port => {
       return;
     }
 
+    // JS replay: panel → content (relay replay request)
+    if (message.action === 'js_replay_request') {
+      if (connections[tabId] && connections[tabId].content) {
+        try {
+          connections[tabId].content.postMessage({ action: 'js_replay_request', data: message.data });
+        } catch (err) {
+          console.error('[Background] js_replay_request forward failed:', err);
+        }
+      }
+      return;
+    }
+
+    // JS replay result: content → panel (relay ack/rejected)
+    if (message.action === 'js_replay_ack' || message.action === 'js_replay_rejected') {
+      if (connections[tabId] && connections[tabId].panel) {
+        try {
+          connections[tabId].panel.postMessage({ action: message.action, target: 'panel', data: message.data });
+        } catch (err) {
+          console.error('[Background] js_replay result forward failed:', err);
+        }
+      }
+      return;
+    }
+
     // Handle triggerRepeat action
     if (message.action == "triggerRepeat") {
       console.log('[Background] Received triggerRepeat for tab:', tabId);

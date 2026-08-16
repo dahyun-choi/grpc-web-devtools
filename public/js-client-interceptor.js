@@ -1,0 +1,390 @@
+// public/js-client-interceptor.js
+(() => {
+  const POST_TYPE = "__GRPCWEB_DEVTOOLS__";
+  const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
+  const REPLAY_ACK_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_ACK__";
+  const REPLAY_REJECTED_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__";
+  const TRANSPORT_GRPC = "grpc-web";
+  const TRANSPORT_CONNECT = "connect-web";
+  const MAX_HANDLES = 100;
+  const INSTRUMENTED = "__grpcJsInterceptorInstrumented__";
+
+  // Patch window.fetch HERE (synchronous, MAIN world, document_start) so the patch
+  // is in place before connect-web or any page script captures the fetch reference.
+  // grpc-web-interceptor.js does the same but via async <script> tag — too late.
+  const _origFetch = window.fetch;
+  window.fetch = function(url, options) {
+    if (options && options.body) {
+      const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
+      const ts = Date.now();
+
+      // Convert Headers object to plain object
+      var headersObj = {};
+      try {
+        if (options.headers && typeof options.headers.entries === 'function') {
+          for (var _e of options.headers.entries()) headersObj[_e[0]] = _e[1];
+        } else if (options.headers && typeof options.headers === 'object') {
+          headersObj = options.headers;
+        }
+      } catch (_) {}
+
+      // Convert body to base64 and post RAW_REQUEST event immediately.
+      // This ensures the panel's rawCache has the body for Repeat, even without
+      // DebuggerCapture attached.
+      var bodyBase64 = null;
+      try {
+        var _body = options.body;
+        if (_body instanceof Uint8Array) {
+          var _bin = '';
+          for (var _i = 0; _i < _body.length; _i++) _bin += String.fromCharCode(_body[_i]);
+          bodyBase64 = btoa(_bin);
+        } else if (_body instanceof ArrayBuffer) {
+          var _bytes = new Uint8Array(_body);
+          var _bin2 = '';
+          for (var _j = 0; _j < _bytes.length; _j++) _bin2 += String.fromCharCode(_bytes[_j]);
+          bodyBase64 = btoa(_bin2);
+        }
+      } catch (_) {}
+
+      if (bodyBase64) {
+        window.postMessage({
+          type: '__GRPCWEB_DEVTOOLS_RAW_REQUEST__',
+          requestId: ts,
+          rawRequest: {
+            url: urlStr,
+            method: options.method || 'POST',
+            headers: headersObj,
+            body: bodyBase64,
+            encoding: 'base64',
+            timestamp: ts,
+          }
+        }, '*');
+      }
+
+      // Also store for legacy interceptor pickup
+      window.__grpcWebDevtoolsPendingRequest = {
+        method: options.method || 'POST',
+        url: urlStr,
+        headers: headersObj,
+        body: options.body,
+        timestamp: ts,
+      };
+    }
+    return _origFetch.apply(this, arguments);
+  };
+
+  if (typeof window.__grpcWebDevtoolsRequestId === 'undefined') {
+    window.__grpcWebDevtoolsRequestId = 1;
+  }
+  function nextRequestId() { return window.__grpcWebDevtoolsRequestId++; }
+
+  const registry = new Map();
+
+  if (!window.__grpcWebJsInterceptedMethods) {
+    window.__grpcWebJsInterceptedMethods = new Map();
+  }
+  const interceptedMethods = window.__grpcWebJsInterceptedMethods;
+
+  // Step 2: replayToken generation + registry management
+  function randomToken() {
+    const arr = new Uint32Array(4);
+    (window.crypto || window.msCrypto).getRandomValues(arr);
+    return Array.from(arr, v => v.toString(36)).join('-');
+  }
+
+  function registerHandle(invoke) {
+    if (registry.size >= MAX_HANDLES) {
+      registry.delete(registry.keys().next().value);
+    }
+    let token;
+    for (let i = 0; i < 8; i++) {
+      const t = randomToken();
+      if (!registry.has(t)) { token = t; break; }
+    }
+    if (!token) return null;
+    registry.set(token, { invoke });
+    return token;
+  }
+
+  function getHandle(token) {
+    const h = registry.get(token);
+    if (!h) return null;
+    registry.delete(token);
+    registry.set(token, h);
+    return h;
+  }
+
+  // Step 3: postMessage helpers + serialization/reconstruction
+  function post(payload) {
+    try { window.postMessage({ type: POST_TYPE, __jsIntercepted: true, ...payload }, '*'); }
+    catch (_) {}
+  }
+
+  function serializeGrpcWeb(request) {
+    try {
+      if (request && typeof request.toObject === 'function') return request.toObject();
+      return request;
+    } catch (_) { return { __serializationError: true }; }
+  }
+
+  function serializeConnectWeb(request) {
+    try {
+      if (request && typeof request.toJson === 'function') return request.toJson({ emitDefaultValues: true });
+      return request;
+    } catch (_) { return { __serializationError: true }; }
+  }
+
+  function reconstructGrpcWeb(originalRequest, json) {
+    if (!originalRequest || typeof originalRequest.constructor !== 'function') {
+      throw new Error('Cannot reconstruct: no original request constructor');
+    }
+    const msg = new originalRequest.constructor();
+    Object.keys(json).forEach(key => {
+      const setter = 'set' + key.charAt(0).toUpperCase() + key.slice(1);
+      if (typeof msg[setter] === 'function') {
+        try { msg[setter](json[key]); } catch (_) {}
+      }
+    });
+    return msg;
+  }
+
+  function reconstructConnectWeb(originalRequest, json) {
+    const C = originalRequest && originalRequest.constructor;
+    if (!C) throw new Error('Cannot reconstruct connect-web request');
+    if (typeof C.fromJson === 'function') return C.fromJson(json);
+    if (typeof C.fromJsonString === 'function') return C.fromJsonString(JSON.stringify(json));
+    try { return new C(json); } catch (_) {}
+    throw new Error('No supported fromJson method on connect-web request type');
+  }
+
+  // Step 4: instrumentGrpcWebClient
+  function instrumentGrpcWebClient(client) {
+    const target = client && client.client_;
+    if (!target || target[INSTRUMENTED]) return;
+    const origRpcCall = target.rpcCall;
+    const origServerStreaming = target.serverStreaming;
+    if (typeof origRpcCall !== 'function') return;
+    Object.defineProperty(target, INSTRUMENTED, { value: true, configurable: true });
+
+    target.rpcCall = function rpcCall(method, request, metadata, methodInfo, callback) {
+      const requestId = nextRequestId();
+      const requestPayload = serializeGrpcWeb(request);
+      const replayToken = registerHandle((json, _cmd) => {
+        const replayReq = reconstructGrpcWeb(request, json);
+        return target.rpcCall(method, replayReq, metadata, methodInfo, () => {});
+      });
+
+      interceptedMethods.set(method, Date.now());
+      post({ transport: TRANSPORT_GRPC, phase: 'start', method, methodType: 'unary', requestId, request: requestPayload, replayToken });
+
+      return origRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
+        if (error) {
+          post({ transport: TRANSPORT_GRPC, phase: 'error', method, methodType: 'unary', requestId, error: { code: error.code, message: error.message } });
+        } else {
+          post({ transport: TRANSPORT_GRPC, phase: 'complete', method, methodType: 'unary', requestId, response: serializeGrpcWeb(response) });
+        }
+        if (typeof callback === 'function') callback(error, response);
+      });
+    };
+
+    if (typeof origServerStreaming === 'function') {
+      target.serverStreaming = function serverStreaming(method, request, metadata, methodInfo) {
+        const requestId = nextRequestId();
+        const requestPayload = serializeGrpcWeb(request);
+        const replayToken = registerHandle((json, _cmd) => {
+          const replayReq = reconstructGrpcWeb(request, json);
+          return origServerStreaming.call(target, method, replayReq, metadata, methodInfo);
+        });
+
+        interceptedMethods.set(method, Date.now());
+        post({ transport: TRANSPORT_GRPC, phase: 'start', method, methodType: 'server_streaming', requestId, request: requestPayload, replayToken });
+
+        const stream = origServerStreaming.call(this, method, request, metadata, methodInfo);
+        stream.on('data', resp => {
+          post({ transport: TRANSPORT_GRPC, phase: 'message', method, methodType: 'server_streaming', requestId, response: serializeGrpcWeb(resp) });
+        });
+        stream.on('status', status => {
+          if (status.code === 0) {
+            post({ transport: TRANSPORT_GRPC, phase: 'complete', method, methodType: 'server_streaming', requestId });
+          }
+        });
+        stream.on('error', err => {
+          post({ transport: TRANSPORT_GRPC, phase: 'error', method, methodType: 'server_streaming', requestId, error: { code: err.code, message: err.message } });
+        });
+        return stream;
+      };
+    }
+  }
+
+  // Step 5: Register window.__GRPCWEB_DEVTOOLS__
+  const prevGrpcDevtools = window.__GRPCWEB_DEVTOOLS__;
+  window.__GRPCWEB_DEVTOOLS__ = function(clients) {
+    if (Array.isArray(clients)) clients.forEach(instrumentGrpcWebClient);
+    if (typeof prevGrpcDevtools === 'function') prevGrpcDevtools(clients);
+  };
+
+  // Step 6: Register window.__CONNECT_WEB_DEVTOOLS__
+  // Use Object.defineProperty so our handler wins regardless of script execution order.
+  // Dynamically inserted <script> tags are async — connect-web-interceptor.js may run
+  // after us and overwrite a plain assignment. The setter silently ignores such writes.
+  var _cwFactory = (next) => async (req) => {
+    const requestId = nextRequestId();
+    const requestPayload = serializeConnectWeb(req.message);
+    const methodName = req.method && req.method.name ? req.method.name : String(req.url || '');
+    const methodType = req.stream ? 'server_streaming' : 'unary';
+    const replayToken = registerHandle((json, _cmd) => {
+      const replayReq = reconstructConnectWeb(req.message, json);
+      return next({ ...req, message: replayReq });
+    });
+
+    interceptedMethods.set(methodName, Date.now());
+    post({ transport: TRANSPORT_CONNECT, phase: 'start', method: methodName, methodType, requestId, request: requestPayload, replayToken });
+
+    try {
+      const response = await next(req);
+      post({ transport: TRANSPORT_CONNECT, phase: 'complete', method: methodName, methodType, requestId, response: serializeConnectWeb(response.message) });
+      return response;
+    } catch (error) {
+      post({ transport: TRANSPORT_CONNECT, phase: 'error', method: methodName, methodType, requestId, error: { code: error.code, message: error.message } });
+      throw error;
+    }
+  };
+  Object.defineProperty(window, '__CONNECT_WEB_DEVTOOLS__', {
+    get: function() { return _cwFactory; },
+    set: function() { /* ignored — js-client-interceptor owns this property */ },
+    configurable: true,
+    enumerable: true,
+  });
+
+  // Step 7: Replay listener + cleanup
+  function handleReplay(event) {
+    const data = event.source === window ? event.data : null;
+    if (!data || data.type !== REPLAY_REQUEST_TYPE) return;
+    const { replayToken, transport, request: editedJson, captureId, replayAttemptId } = data;
+
+    const base = { captureId, replayToken, replayAttemptId };
+
+    if (typeof replayToken !== 'string') {
+      window.postMessage({ type: REPLAY_REJECTED_TYPE, ...base, reason: 'replayToken is missing' }, '*');
+      return;
+    }
+    const handle = getHandle(replayToken);
+    if (!handle) {
+      window.postMessage({ type: REPLAY_REJECTED_TYPE, ...base, reason: 'Replay handle expired or not found. Reload the page and retry.' }, '*');
+      return;
+    }
+    if (!editedJson || typeof editedJson !== 'object') {
+      window.postMessage({ type: REPLAY_REJECTED_TYPE, ...base, reason: 'Invalid replay request body' }, '*');
+      return;
+    }
+    try {
+      const result = handle.invoke(editedJson, data);
+      // Wrap in Promise.resolve() — protobuf-ts UnaryCall is PromiseLike but lacks .catch()
+      Promise.resolve(result).catch(() => {});
+      window.postMessage({ type: REPLAY_ACK_TYPE, ...base }, '*');
+    } catch (error) {
+      window.postMessage({ type: REPLAY_REJECTED_TYPE, ...base, reason: error.message || 'Replay failed' }, '*');
+    }
+  }
+
+  window.addEventListener('message', handleReplay, false);
+  window.addEventListener('pagehide', () => registry.clear(), false);
+  window.addEventListener('unload', () => registry.clear(), false);
+
+  // ── protobuf-ts devtools API ──────────────────────────────────────────────
+  // Some apps (e.g. those using shucle-react-components) check for
+  // window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__ and delegate interceptor calls to it.
+  // Registering here gives us method.I / method.O access — enabling Edit & Replay
+  // without uploading proto files.
+  const TRANSPORT_PROTOBUF_TS = 'protobuf-ts';
+
+  function ptInterceptUnary(context, replayFlags) {
+    const { next, method, input, options } = context;
+    const isRepeat = !!(replayFlags && (replayFlags.isRepeat || replayFlags.isEditRepeat));
+    const isEditRepeat = !!(replayFlags && replayFlags.isEditRepeat);
+    const requestId = nextRequestId();
+    const baseUrl = (options && options.baseUrl) || '';
+    const methodName = baseUrl.replace(/\/$/, '') + '/' + method.service.typeName + '/' + method.name;
+
+    let requestPayload;
+    try { requestPayload = method.I.toJson(input, options && options.jsonOptions); }
+    catch (_) { requestPayload = {}; }
+
+    const replayToken = registerHandle((editedJson, cmd) => {
+      let newInput;
+      try { newInput = method.I.fromJson(editedJson, options && options.jsonOptions); }
+      catch (e) { throw new Error('Request reconstruction failed: ' + (e.message || e)); }
+      return ptInterceptUnary({ next, method, input: newInput, options }, {
+        isRepeat: !cmd.isEditRepeat,
+        isEditRepeat: !!cmd.isEditRepeat,
+      });
+    });
+
+    const startPayload = { transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'unary', requestId, request: requestPayload, replayToken };
+    if (isRepeat) startPayload.isRepeat = true;
+    if (isEditRepeat) startPayload.isEditRepeat = true;
+    interceptedMethods.set(methodName, Date.now());
+    post(startPayload);
+
+    const call = next(method, input, options);
+    call.then(
+      (finishedCall) => {
+        let resp;
+        try { resp = method.O.toJson(finishedCall.response, options && options.jsonOptions); }
+        catch (_) { resp = null; }
+        const completePayload = { transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'unary', requestId, response: resp };
+        if (isRepeat) completePayload.isRepeat = true;
+        if (isEditRepeat) completePayload.isEditRepeat = true;
+        post(completePayload);
+      },
+      (error) => {
+        post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'error', method: methodName, methodType: 'unary', requestId, error: { code: error.code, message: error.message } });
+      }
+    );
+
+    return call;
+  }
+
+  function ptInterceptServerStreaming(context) {
+    const { next, method, input, options } = context;
+    const requestId = nextRequestId();
+    const baseUrl = (options && options.baseUrl) || '';
+    const methodName = baseUrl.replace(/\/$/, '') + '/' + method.service.typeName + '/' + method.name;
+
+    let requestPayload;
+    try { requestPayload = method.I.toJson(input, options && options.jsonOptions); }
+    catch (_) { requestPayload = {}; }
+
+    interceptedMethods.set(methodName, Date.now());
+    post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'start', method: methodName, methodType: 'server_streaming', requestId, request: requestPayload });
+
+    const call = next(method, input, options);
+    call.responses.onMessage((message) => {
+      let resp;
+      try { resp = method.O.toJson(message, options && options.jsonOptions); }
+      catch (_) { resp = null; }
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'message', method: methodName, methodType: 'server_streaming', requestId, response: resp });
+    });
+    call.responses.onError((error) => {
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'error', method: methodName, methodType: 'server_streaming', requestId, error: { code: error.code, message: error.message } });
+    });
+    call.responses.onComplete(() => {
+      post({ transport: TRANSPORT_PROTOBUF_TS, phase: 'complete', method: methodName, methodType: 'server_streaming', requestId });
+    });
+
+    return call;
+  }
+
+  const _ptApi = Object.freeze({
+    protocolVersion: 1,
+    interceptUnary: ptInterceptUnary,
+    interceptServerStreaming: ptInterceptServerStreaming,
+  });
+
+  Object.defineProperty(window, '__GRPCWEB_DEVTOOLS_PROTOBUF_TS__', {
+    get: function() { return _ptApi; },
+    set: function() {},
+    configurable: true,
+    enumerable: true,
+  });
+})();

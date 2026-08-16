@@ -212,6 +212,8 @@ export function buildSummaryEntry(entry) {
     isGenerated: !!entry.isGenerated,
     streamCount: entry.responses?.length ?? null,
     streamComplete: entry.streamComplete ?? false,
+    replayToken: entry.replayToken ?? null,
+    transport: entry.transport ?? null,
   };
 }
 

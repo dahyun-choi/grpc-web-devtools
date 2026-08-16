@@ -288,6 +288,9 @@ cs.onload = function () {
 };
 (document.head || document.documentElement).appendChild(cs);
 
+// js-client-interceptor.js is injected via manifest content_scripts (world: "MAIN")
+// so it runs synchronously at document_start before any page script.
+
 var port;
 var fallbackRequestId = 1;
 
@@ -414,6 +417,20 @@ function handlePortMessage(message) {
 
     console.log('[Content Script] ✓ Posted repeat notification with requestId:', requestId);
   }
+
+  if (message.action === 'js_replay_request') {
+    var data = message.data;
+    if (!data) return;
+    window.postMessage({
+      type: '__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__',
+      replayToken: data.replayToken,
+      transport: data.transport,
+      request: data.request,
+      captureId: data.captureId,
+      replayAttemptId: data.replayAttemptId,
+      isEditRepeat: data.isEditRepeat,
+    }, '*');
+  }
 }
 
 function sendGRPCNetworkCall(data) {
@@ -422,11 +439,16 @@ function sendGRPCNetworkCall(data) {
   }
   setupPortIfNeeded();
   if (port) {
-    port.postMessage({
-      action: "gRPCNetworkCall",
-      target: "panel",
-      data,
-    });
+    try {
+      port.postMessage({
+        action: "gRPCNetworkCall",
+        target: "panel",
+        data,
+      });
+    } catch (err) {
+      // port.postMessage can throw on non-serializable data or disconnected port
+      console.warn('[Content Script] gRPCNetworkCall dropped:', err.message);
+    }
   }
 }
 
@@ -447,6 +469,25 @@ function handleMessageEvent(event) {
         data: event.data
       });
       console.log('[Content Script] Forwarded raw request for ID:', event.data.requestId);
+    }
+  }
+
+  if (event.data.type === '__GRPCWEB_DEVTOOLS_REPLAY_ACK__' ||
+      event.data.type === '__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__') {
+    setupPortIfNeeded();
+    if (port) {
+      port.postMessage({
+        action: event.data.type === '__GRPCWEB_DEVTOOLS_REPLAY_ACK__'
+          ? 'js_replay_ack'
+          : 'js_replay_rejected',
+        target: 'panel',
+        data: {
+          captureId: event.data.captureId,
+          replayToken: event.data.replayToken,
+          replayAttemptId: event.data.replayAttemptId,
+          reason: event.data.reason,
+        },
+      });
     }
   }
 }

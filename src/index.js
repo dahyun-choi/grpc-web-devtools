@@ -115,13 +115,15 @@ if (chrome) {
       addToRawCache(requestId, cacheEntry);
     });
 
-    // Enable debugger capture
-    debuggerCapture.enable().then(() => {
-      console.log('[Index] ✓ DebuggerCapture enabled');
-    }).catch(err => {
-      console.error('[Index] Failed to enable DebuggerCapture:', err);
-      console.log('[Index] Falling back to traditional interceptor method');
-    });
+    // Debugger is NOT attached at startup — only on first raw-fetch repeat.
+    // This prevents the "debugger attached" browser banner from appearing on load.
+    // Call window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__() to attach on demand.
+    window.__GRPCWEB_DEVTOOLS_ENABLE_DEBUGGER__ = () => {
+      if (debuggerCapture && !debuggerCapture.enabled) {
+        return debuggerCapture.enable();
+      }
+      return Promise.resolve();
+    };
 
     // Cleanup on unload
     window.addEventListener('unload', () => {
@@ -753,6 +755,17 @@ function _onMessageRecived({ action, data }) {
       }
     }
     console.log('[Index] ================================================');
+  } else if (action === 'js_replay_ack') {
+    // No-op: the new gRPC call appears as a normal gRPCNetworkCall entry
+    console.log('[Index] JS replay ACK received');
+  } else if (action === 'js_replay_rejected') {
+    console.warn('[Index] JS replay REJECTED:', data && data.reason);
+    window.dispatchEvent(new CustomEvent('grpc-devtools-replay-rejected', {
+      detail: {
+        reason: (data && data.reason) || 'Replay failed',
+        replayAttemptId: data && data.replayAttemptId,
+      },
+    }));
   }
 }
 
