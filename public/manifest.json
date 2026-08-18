@@ -2,7 +2,7 @@
   "name": "gRPC-Web DevTools for QA",
   "version": "1.4.1",
   "manifest_version": 3,
-  "description": "gRPC-Web Developer Tools for debugging application's gRPC-Web network requests.",
+  "description": "A Chrome DevTools extension for debugging gRPC-Web requests. Capture, Repeat, and Edit & Repeat without uploading proto files.",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
