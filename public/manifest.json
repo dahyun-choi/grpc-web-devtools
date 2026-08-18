@@ -1,5 +1,5 @@
 {
-  "name": "gRPC-Web Developer Tools",
+  "name": "gRPC-Web DevTools for QA",
   "version": "1.4.1",
   "manifest_version": 3,
   "description": "gRPC-Web Developer Tools for debugging application's gRPC-Web network requests.",
