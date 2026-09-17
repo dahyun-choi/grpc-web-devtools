@@ -343,14 +343,11 @@ class NetworkList extends Component {
       loadTest: { visible: false, entryId: null },
       schemaModal: { visible: false, schemaLines: [] },
       schemaTooltip: null,
-      scenarioEntryIds: [],  // ordered list of entryIds in the scenario
+      scenarioEntryIds: [],
       scenarioVisible: false,
-      colWidths: { time: 85, code: 60, duration: 55 },
-      diffQueue: [],    // up to 2 entryIds for diff
+      diffQueue: [],
       diffVisible: false,
       streamingVisualizerEntryId: null,
-      columnVisibility: { time: true, code: true, duration: true },
-      colMenu: { visible: false, x: 0, y: 0 },
       templateSaveToast: false,
     };
     this.handleContextMenu = this.handleContextMenu.bind(this);
@@ -382,13 +379,8 @@ class NetworkList extends Component {
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('mousemove', this._mdMove);
     document.addEventListener('mouseup', this._mdEnd);
-    // Restore column visibility from storage
     if (chrome?.storage?.local) {
-      chrome.storage.local.get(['grpc_devtools_column_visibility_v1', 'grpc_devtools_pinned_v1'], (result) => {
-        const savedVis = result['grpc_devtools_column_visibility_v1'];
-        if (savedVis) this.setState({ columnVisibility: { ...this.state.columnVisibility, ...savedVis } });
-
-        // Restore pinned entries
+      chrome.storage.local.get(['grpc_devtools_pinned_v1'], (result) => {
         const savedPinned = result['grpc_devtools_pinned_v1'];
         if (savedPinned?.length) {
           savedPinned.forEach(({ fullEntry }) => { if (fullEntry) restoreNetworkEntry(fullEntry); });
@@ -615,64 +607,6 @@ class NetworkList extends Component {
     });
   }
 
-  handleColumnHeaderMenu = (e) => {
-    e.preventDefault();
-    this.setState({ colMenu: { visible: true, x: e.clientX, y: e.clientY } });
-  };
-
-  hideColumnMenu = () => {
-    this.setState({ colMenu: { visible: false, x: 0, y: 0 } });
-  };
-
-  toggleColumnVisibility = (col) => {
-    this.setState(s => {
-      const columnVisibility = { ...s.columnVisibility, [col]: !s.columnVisibility[col] };
-      if (chrome?.storage?.local) {
-        chrome.storage.local.set({ grpc_devtools_column_visibility_v1: columnVisibility });
-      }
-      return { columnVisibility };
-    });
-  };
-
-  startResize(col, e) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const { colWidths } = this.state;
-    const startWidth = colWidths[col];
-    const startCodeWidth = colWidths.code;
-
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (moveEvent) => {
-      const delta = moveEvent.clientX - startX;
-      if (col === 'time') {
-        // 오른쪽 핸들: 드래그 우 → time 커짐, name 줄어듦
-        const newWidth = Math.max(40, startWidth + delta);
-        this.setState(s => ({ colWidths: { ...s.colWidths, time: newWidth } }));
-      } else if (col === 'code') {
-        // 왼쪽 핸들(name-code 경계): 드래그 좌 → code 커짐, name 줄어듦
-        const newWidth = Math.max(40, startWidth - delta);
-        this.setState(s => ({ colWidths: { ...s.colWidths, code: newWidth } }));
-      } else if (col === 'duration') {
-        // 왼쪽 핸들(code-duration 경계): 드래그 좌 → duration 커지고 code 줄어듦
-        const newDuration = Math.max(40, startWidth - delta);
-        const newCode = Math.max(40, startCodeWidth + delta);
-        this.setState(s => ({ colWidths: { ...s.colWidths, code: newCode, duration: newDuration } }));
-      }
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }
-
   closeModal() {
     this.setState({ modal: { visible: false, command: '', copied: false } });
   }
@@ -709,22 +643,20 @@ class NetworkList extends Component {
 
   getItemData() {
     const { log } = this.props.network;
-    const { scenarioEntryIds, colWidths, columnVisibility } = this.state;
+    const { scenarioEntryIds } = this.state;
     const globalSearchValue = this.props.globalSearchValue || '';
-    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedColWidths !== colWidths || this._cachedSearch !== globalSearchValue || this._cachedColVis !== columnVisibility) {
+    if (this._cachedLog !== log || this._cachedScenarioIds !== scenarioEntryIds || this._cachedSearch !== globalSearchValue) {
       this._cachedLog = log;
       this._cachedScenarioIds = scenarioEntryIds;
-      this._cachedColWidths = colWidths;
       this._cachedSearch = globalSearchValue;
-      this._cachedColVis = columnVisibility;
-      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, colWidths, columnVisibility, globalSearchValue };
+      this._cachedItemData = { log, onContextMenu: this.handleContextMenu, scenarioEntryIds, globalSearchValue };
     }
     return this._cachedItemData;
   }
 
   render() {
     const { network } = this.props;
-    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, colWidths, columnVisibility, colMenu, diffQueue, diffVisible, streamingVisualizerEntryId } = this.state;
+    const { contextMenu, modal, grpcurlPos, grpcurlSize, loadTest, schemaModal, schemaPos, schemaSize, schemaTooltip, scenarioEntryIds, scenarioVisible, diffQueue, diffVisible, streamingVisualizerEntryId } = this.state;
 
     const grpcurlStyle = {};
     if (grpcurlPos) { grpcurlStyle.position = 'fixed'; grpcurlStyle.left = grpcurlPos.x; grpcurlStyle.top = grpcurlPos.y; grpcurlStyle.margin = 0; }
@@ -744,32 +676,8 @@ class NetworkList extends Component {
       <div className="widget vbox network-list">
         <div className="widget vbox">
           <div className="data-grid">
-            <div className="header-container" onContextMenu={this.handleColumnHeaderMenu}>
-              <table className="header">
-                <tbody>
-                  <tr>
-                    {columnVisibility.time && (
-                      <th className="time-column" style={{ width: colWidths.time }}>
-                        <div>Time</div>
-                        <div className="resize-handle" onMouseDown={e => this.startResize('time', e)} />
-                      </th>
-                    )}
-                    <th><div>Name</div></th>
-                    {columnVisibility.code && (
-                      <th className="code-column" style={{ width: colWidths.code }}>
-                        <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('code', e)} />
-                        <div>Code</div>
-                      </th>
-                    )}
-                    {columnVisibility.duration && (
-                      <th className="duration-column" style={{ width: colWidths.duration }}>
-                        <div className="resize-handle resize-handle-left" onMouseDown={e => this.startResize('duration', e)} />
-                        <div>Dur.</div>
-                      </th>
-                    )}
-                  </tr>
-                </tbody>
-              </table>
+            <div className="header-container">
+              <div className="header-single">Name</div>
             </div>
             {/* Pinned section */}
             {network.pinnedEntries.length > 0 && (
@@ -787,20 +695,22 @@ class NetworkList extends Component {
                       onClick={() => this.props.selectPinnedEntry(entry.entryId)}
                       onContextMenu={e => { e.preventDefault(); this.handleContextMenu(e, entry.entryId); }}
                     >
-                      {columnVisibility.time && <span className="time-cell" style={{ width: colWidths.time - 5 }}>{this._formatTime(entry.timestamp)}</span>}
                       <span className="name-cell">
                         <span style={{ fontSize: 9, marginRight: 4, opacity: 0.7 }}>📌</span>
                         {entry.endpoint}
                       </span>
-                      {columnVisibility.code && <span className={`code-cell ${hasError ? 'error-code' : 'ok-code'}`} style={{ width: colWidths.code }}>{this._formatCode(entry.statusCode)}</span>}
-                      {columnVisibility.duration && <span className="duration-cell" style={{ width: colWidths.duration - 4 }}>{this._formatDuration(entry.duration)}</span>}
+                      <span className="row-meta">
+                        {entry.timestamp != null && <span className="meta-time">{this._formatTime(entry.timestamp)}</span>}
+                        {entry.statusCode != null && <span className={`meta-code ${hasError ? 'error-code' : 'ok-code'}`}>{this._formatCode(entry.statusCode)}</span>}
+                        {entry.duration != null && <span className="meta-dur">{this._formatDuration(entry.duration)}</span>}
+                      </span>
                     </div>
                   );
                 })}
               </div>
             )}
 
-            <div className="data-container" style={{ top: 27 + (network.pinnedEntries.length > 0 ? 22 + network.pinnedEntries.length * 21 : 0) }}>
+            <div className="data-container" style={{ top: 21 + (network.pinnedEntries.length > 0 ? 22 + network.pinnedEntries.length * 21 : 0) }}>
               <AutoSizer disableWidth>
                 {({ height }) => (
                   <List
@@ -1061,23 +971,6 @@ class NetworkList extends Component {
           <div className="grpc-template-toast">Template saved</div>,
           document.body
         )}
-
-        {/* Column visibility menu */}
-        {colMenu.visible && ReactDOM.createPortal(<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={this.hideColumnMenu} />
-          <div className="grpc-context-menu" style={{ left: colMenu.x, top: colMenu.y, zIndex: 9000 }}>
-            {[
-              { key: 'time', label: 'Time' },
-              { key: 'code', label: 'Code' },
-              { key: 'duration', label: 'Dur.' },
-            ].map(({ key, label }) => (
-              <button key={key} className="grpc-context-menu-item col-menu-item" onClick={() => this.toggleColumnVisibility(key)}>
-                <span className={`col-menu-check ${columnVisibility[key] ? 'col-menu-check-on' : ''}`}>✓</span>
-                {label}
-              </button>
-            ))}
-          </div>
-        </>, document.body)}
 
       </div>
     );

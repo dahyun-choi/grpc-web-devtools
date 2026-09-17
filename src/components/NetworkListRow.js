@@ -50,7 +50,7 @@ class NetworkListRow extends PureComponent {
 
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const { log: logArray, onContextMenu, scenarioEntryIds, colWidths = { time: 85, code: 60, duration: 45 }, columnVisibility = { time: true, code: true, duration: true }, globalSearchValue } = data;
+    const { log: logArray, onContextMenu, scenarioEntryIds, globalSearchValue } = data;
     const log = logArray[index];
     const hasError = log.error || (log.statusCode != null && log.statusCode !== 0);
     const scenarioIdx = scenarioEntryIds ? scenarioEntryIds.indexOf(log.entryId) : -1;
@@ -61,7 +61,6 @@ class NetworkListRow extends PureComponent {
         onClick={() => selectLogEntry(index)}
         onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(e, log.entryId); }}
       >
-        {columnVisibility.time && <span className="time-cell" style={{ width: colWidths.time - 5 }} title={this.formatTime(log.timestamp)}>{this.formatTime(log.timestamp)}</span>}
         <span className="name-cell">
           <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
           {highlightText(log.endpoint, globalSearchValue)}
@@ -79,9 +78,12 @@ class NetworkListRow extends PureComponent {
             </span>
           )}
         </span>
-        {columnVisibility.code && <span className={`code-cell ${hasError ? "error-code" : "ok-code"}`} style={{ width: colWidths.code }} title={this.formatStatusCode(log.statusCode)}>{this.formatStatusCode(log.statusCode)}</span>}
-        {columnVisibility.duration && <span className="duration-cell" style={{ width: colWidths.duration - 4 }} title={this.formatDuration(log.duration)}>{this.formatDuration(log.duration)}</span>}
-      </div >
+        <span className="row-meta">
+          {log.timestamp != null && <span className="meta-time" title={this.formatTime(log.timestamp)}>{this.formatTime(log.timestamp)}</span>}
+          {log.statusCode != null && <span className={`meta-code ${hasError ? "error-code" : "ok-code"}`} title={this.formatStatusCode(log.statusCode)}>{this.formatStatusCode(log.statusCode)}</span>}
+          {log.duration != null && <span className="meta-dur" title={this.formatDuration(log.duration)}>{this.formatDuration(log.duration)}</span>}
+        </span>
+      </div>
     );
   }
 }

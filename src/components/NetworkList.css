@@ -113,30 +113,26 @@
 }
 
 .header-container {
-  height: 27px;
+  height: 21px;
   background-color: var(--toolbar-bg-color);
+  border-bottom: var(--divider-border);
   position: absolute;
   left: 0;
   right: 0;
   overflow-x: hidden;
+  display: flex;
+  align-items: center;
 }
 
-.time-column {
-  width: 85px;
-}
-
-.time-cell {
-  display: inline-block;
-  width: 80px;
-  margin-right: 5px;
-  font-family: monospace;
+.header-single {
+  padding: 0 4px;
   font-size: 11px;
+  font-weight: normal;
   color: var(--toolbar-color);
-  opacity: 0.8;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 21px;
 }
+
 
 .name-cell {
   display: inline-block;
@@ -218,72 +214,46 @@
   vertical-align: middle;
 }
 
-.code-column {
-  width: 60px;
-  text-align: center;
-}
-
-.code-cell {
-  display: inline-block;
-  width: 60px;
+/* ── Merged row meta ──────────────────────────────────────────────── */
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
   font-family: monospace;
   font-size: 11px;
-  text-align: center;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding-right: 4px;
+}
+
+.meta-time {
+  color: var(--toolbar-color);
+  opacity: 0.65;
   white-space: nowrap;
 }
 
-.code-cell.ok-code {
+.meta-code {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.meta-code.ok-code {
   color: #0a0;
 }
 
-.code-cell.error-code {
+.meta-code.error-code {
   color: rgb(216, 0, 0);
 }
 
-.data-grid .data-row.selected .code-cell {
+.data-grid .data-row.selected .meta-code {
   color: var(--selection-fg-color);
 }
 
-.duration-column {
-  width: 55px;
-  text-align: right;
-}
-
-.duration-cell {
-  display: inline-block;
-  width: 50px;
-  font-family: monospace;
-  font-size: 11px;
-  text-align: right;
+.meta-dur {
   color: var(--toolbar-color);
-  opacity: 0.8;
-  padding-right: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  opacity: 0.65;
   white-space: nowrap;
-}
-
-.resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  cursor: col-resize;
-  z-index: 1;
-}
-
-.resize-handle.resize-handle-left {
-  left: 0;
-  right: auto;
-}
-
-.resize-handle:hover,
-.resize-handle.dragging {
-  background: rgba(128, 128, 128, 0.4);
+  min-width: 32px;
+  text-align: right;
 }
 
 /* ── Context menu ────────────────────────────────────── */
