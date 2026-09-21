@@ -493,8 +493,8 @@ class NetworkDetails extends Component {
                 </button>
               </>
             )}
-            <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={this._copyRequestToClipboard}>
-              <span>{requestCopied ? 'Copied!' : 'Copy'}</span>
+            <button className={`action-button ${requestCopied ? 'copied' : ''}`} onClick={() => this._copyRequestToClipboard(requestTab, rawRequest)}>
+              <span>{requestCopied ? 'Copied!' : requestTab === 'headers' ? 'Copy Headers' : 'Copy'}</span>
               <CopyIcon />
             </button>
             <button className="action-button" onClick={this._toggleRequestExpand}>
@@ -609,8 +609,8 @@ class NetworkDetails extends Component {
             </button>
           </div>
           <div className="section-actions">
-            <button className={`action-button ${responseCopied ? 'copied' : ''}`} onClick={this._copyResponseToClipboard}>
-              <span>{responseCopied ? 'Copied!' : 'Copy'}</span>
+            <button className={`action-button ${responseCopied ? 'copied' : ''}`} onClick={() => this._copyResponseToClipboard(responseTab, rawRequest)}>
+              <span>{responseCopied ? 'Copied!' : responseTab === 'headers' ? 'Copy Headers' : 'Copy'}</span>
               <CopyIcon />
             </button>
             <button className="action-button" onClick={this._toggleResponseExpand}>
@@ -829,16 +829,24 @@ class NetworkDetails extends Component {
     const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
 
     return (
-      <ReactJson
-        name={false}
-        theme={theme}
-        style={{ backgroundColor: "transparent" }}
-        enableClipboard={false}
-        collapsed={false}
-        displayDataTypes={false}
-        displayObjectSize={false}
-        src={headers}
-      />
+      <>
+        {rawRequest.url && (
+          <div className="request-url-row">
+            <span className="request-url-label">Request URL</span>
+            <span className="request-url-value" title={rawRequest.url}>{rawRequest.url}</span>
+          </div>
+        )}
+        <ReactJson
+          name={false}
+          theme={theme}
+          style={{ backgroundColor: "transparent" }}
+          enableClipboard={false}
+          collapsed={false}
+          displayDataTypes={false}
+          displayObjectSize={false}
+          src={headers}
+        />
+      </>
     );
   };
 
@@ -1905,18 +1913,30 @@ class NetworkDetails extends Component {
     });
   };
 
-  _copyRequestToClipboard = () => {
+  _copyRequestToClipboard = (tab, rawRequest) => {
     const { entry } = this.props;
     if (!entry) return;
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { request } = entryToRender;
 
-    if (!request) return;
+    let data;
+    if (tab === 'headers' && rawRequest?.headers) {
+      const headers = {};
+      if (Array.isArray(rawRequest.headers)) {
+        rawRequest.headers.forEach(h => { headers[h.name] = h.value; });
+      } else {
+        Object.assign(headers, rawRequest.headers);
+      }
+      data = headers;
+    } else {
+      data = entryToRender.request;
+    }
+
+    if (!data) return;
 
     try {
-      const jsonString = JSON.stringify(request, null, 2);
+      const jsonString = JSON.stringify(data, null, 2);
 
       const textarea = document.createElement('textarea');
       textarea.value = jsonString;
@@ -1946,15 +1966,26 @@ class NetworkDetails extends Component {
     }
   };
 
-  _copyResponseToClipboard = () => {
+  _copyResponseToClipboard = (tab, rawRequest) => {
     const { entry } = this.props;
     if (!entry) return;
 
     const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
     const entryToRender = cachedEntry || entry;
-    const { response, error } = entryToRender;
 
-    const data = error || response;
+    let data;
+    if (tab === 'headers' && rawRequest?.responseHeaders) {
+      const headers = {};
+      if (Array.isArray(rawRequest.responseHeaders)) {
+        rawRequest.responseHeaders.forEach(h => { headers[h.name] = h.value; });
+      } else {
+        Object.assign(headers, rawRequest.responseHeaders);
+      }
+      data = headers;
+    } else {
+      data = entryToRender.error || entryToRender.response;
+    }
+
     if (!data) return;
 
     try {

@@ -476,6 +476,29 @@
   font-size: 12px;
 }
 
+.request-url-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 4px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.request-url-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--toolbar-color);
+  opacity: 0.7;
+}
+
+.request-url-value {
+  color: var(--toolbar-color);
+  word-break: break-all;
+  font-family: monospace;
+}
+
 /* Streaming response list */
 .stream-responses {
   display: flex;
