@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import ReactJson from 'react-json-view';
+import JsonCodeEditor from './JsonCodeEditor';
 import { connect } from 'react-redux';
 import { getNetworkEntry } from '../state/networkCache';
 import { setRequestGeneratorOpen } from '../state/toolbar';
@@ -43,10 +44,16 @@ class RequestGenerator extends Component {
     collections: [],
     templatesOpen: false,
     templateFilter: '',
+    saveOpen: false,
+    saveName: '',
+    activeTab: 'body',
+    schemaNavStack: [], // [{ label, fields, isEnum, enumValues }]
+    editorValue: '{}',
   };
 
   _dropdownRef = React.createRef();
   _templatesRef = React.createRef();
+  _saveRef = React.createRef();
   _dropdownListRef = React.createRef();
   _modalRef = React.createRef();
   _responseRef = React.createRef();
@@ -103,6 +110,9 @@ class RequestGenerator extends Component {
     if (this._templatesRef.current && !this._templatesRef.current.contains(e.target)) {
       this.setState({ templatesOpen: false, templateFilter: '' });
     }
+    if (this._saveRef.current && !this._saveRef.current.contains(e.target)) {
+      this.setState({ saveOpen: false, saveName: '' });
+    }
   };
 
   _loadTemplates = () => {
@@ -157,12 +167,14 @@ class RequestGenerator extends Component {
 
     // Reorder request body to proto declaration order at load time
     let body = template.request || {};
-    if (protoManager.isReady()) {
-      const typeInfo = protoManager.getMessageType(template.method);
-      if (typeInfo?.requestType) {
-        body = this._reorderByProto(typeInfo.requestType, body);
+    try {
+      if (protoManager.isReady()) {
+        const typeInfo = protoManager.getMessageType(template.method);
+        if (typeInfo?.requestType) {
+          body = this._reorderByProto(typeInfo.requestType, body);
+        }
       }
-    }
+    } catch (_) {}
 
     // Resolve collection variables: replace {{key}} with value
     const collection = this.state.collections.find(c => c.id === template.collectionId);
@@ -180,6 +192,7 @@ class RequestGenerator extends Component {
       url: url,
       headers,
       body,
+      editorValue: JSON.stringify(body, null, 2),
       selectedMethod: matched || null,
       templatesOpen: false,
       templateFilter: '',
@@ -191,6 +204,28 @@ class RequestGenerator extends Component {
     e.stopPropagation();
     const updated = this.state.templates.filter(t => t.id !== templateId);
     this.setState({ templates: updated });
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ grpc_devtools_templates_v1: updated });
+    }
+  };
+
+  _saveAsTemplate = () => {
+    const { selectedMethod, url, headers, editorValue, saveName, templates } = this.state;
+    const name = saveName.trim();
+    if (!name) return;
+    let request = {};
+    try { request = JSON.parse(editorValue); } catch (_) {}
+    const template = {
+      id: String(Date.now()),
+      name,
+      method: selectedMethod?.fullPath || '',
+      url,
+      headers: headers.map(({ key, value }) => ({ key, value })),
+      request,
+      savedAt: Date.now(),
+    };
+    const updated = [template, ...templates];
+    this.setState({ templates: updated, saveOpen: false, saveName: '' });
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ grpc_devtools_templates_v1: updated });
     }
@@ -342,6 +377,7 @@ class RequestGenerator extends Component {
       url: '',
       headers: [],
       body: {},
+      editorValue: '{}',
       response: null,
     });
   };
@@ -383,18 +419,20 @@ class RequestGenerator extends Component {
   }
 
   _selectMethod = (m) => {
-    const body = protoManager.generateExampleForMethod(m.fullPath);
     const headers = this._getHeadersForMethod(m.fullPath);
     const url = this._getUrlForMethod(m.fullPath);
+    const body = protoManager.generateSkeletonForMethod(m.fullPath);
     this.setState({
       selectedMethod: m,
       searchQuery: '',
       dropdownOpen: false,
       highlightedIndex: -1,
       body,
+      editorValue: JSON.stringify(body, null, 2),
       headers,
       url,
       response: null,
+      schemaNavStack: [],
     });
   };
 
@@ -443,6 +481,141 @@ class RequestGenerator extends Component {
     return best;
   }
 
+  // ── Schema docs table ────────────────────────────────────────────────────
+
+  _schemaDrillDown = (field) => {
+    this.setState(s => ({
+      schemaNavStack: [...s.schemaNavStack, {
+        label: field.typeName,
+        fields: field.fields || [],
+        isEnum: field.kind === 'enum',
+        enumValues: field.enumValues || [],
+        enumComments: field.enumComments || {},
+      }],
+    }));
+  };
+
+  _schemaBack = () => {
+    this.setState(s => ({ schemaNavStack: s.schemaNavStack.slice(0, -1) }));
+  };
+
+  _renderDocsTable = (fields) => {
+    if (!fields?.length) return <div className="rg-schema-empty">No fields defined</div>;
+    const hasDesc = fields.some(f => f.description);
+    return (
+      <table className="rg-docs-table">
+        <thead>
+          <tr>
+            <th className="rg-docs-th-name">Field</th>
+            <th className="rg-docs-th-type">Type</th>
+            {hasDesc && <th className="rg-docs-th-desc">Description</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map(f => {
+            const drillable = f.kind === 'message' || f.kind === 'enum';
+            return (
+              <tr
+                key={f.name}
+                className={drillable ? 'rg-docs-row-drill' : ''}
+                onClick={drillable ? () => this._schemaDrillDown(f) : undefined}
+              >
+                <td className="rg-docs-td-name">
+                  <div className="rg-docs-name-inner">
+                    {f.name}
+                    {f.repeated && <span className="rg-docs-repeated">[ ]</span>}
+                  </div>
+                </td>
+                <td className="rg-docs-td-type">
+                  <div className="rg-docs-type-inner">
+                    <span className={`rg-docs-type-${f.kind}`}>{f.typeName}</span>
+                    {f.kind === 'enum' && !hasDesc && (
+                      <span className="rg-docs-enum-preview">
+                        {' '}{f.enumValues.slice(0, 3).join(' · ')}
+                        {f.enumValues.length > 3 && ` +${f.enumValues.length - 3}`}
+                      </span>
+                    )}
+                    {drillable && <span className="rg-docs-drill-arrow">›</span>}
+                  </div>
+                </td>
+                {hasDesc && <td className="rg-docs-td-desc">{f.description || ''}</td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  };
+
+  _renderEnumTable = (enumValues, enumComments = {}) => {
+    const hasDesc = Object.keys(enumComments).some(k => enumComments[k]);
+    return (
+      <div className="rg-docs-enum-wrap">
+        <span className="rg-docs-enum-badge">Enum</span>
+        <table className="rg-docs-table">
+          <thead>
+            <tr>
+              <th className="rg-docs-th-name">Value</th>
+              {hasDesc && <th className="rg-docs-th-desc">Description</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {enumValues.map(v => (
+              <tr key={v}>
+                <td className="rg-docs-td-name rg-docs-enum-val">{v}</td>
+                {hasDesc && <td className="rg-docs-td-desc">{enumComments[v] || ''}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  _renderSchemaTabContent = (schema) => {
+    const { schemaNavStack } = this.state;
+    const current = schemaNavStack[schemaNavStack.length - 1];
+
+    return (
+      <div className="rg-schema-tab">
+        {schemaNavStack.length > 0 && (
+          <div className="rg-docs-nav">
+            <button className="rg-docs-back" onClick={this._schemaBack}>‹ Back</button>
+            <div className="rg-docs-breadcrumb">
+              {schemaNavStack.map((item, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="rg-docs-sep">›</span>}
+                  <span
+                    className={i < schemaNavStack.length - 1 ? 'rg-docs-crumb-link' : 'rg-docs-crumb-current'}
+                    onClick={i < schemaNavStack.length - 1 ? () => this.setState({ schemaNavStack: schemaNavStack.slice(0, i + 1) }) : undefined}
+                  >
+                    {item.label}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {current ? (
+          current.isEnum
+            ? this._renderEnumTable(current.enumValues, current.enumComments)
+            : this._renderDocsTable(current.fields)
+        ) : (
+          <>
+            <div className="rg-schema-section-label">Request — {schema.requestTypeName}</div>
+            {this._renderDocsTable(schema.fields)}
+            {schema.responseTypeName && (
+              <>
+                <div className="rg-schema-section-label rg-schema-section-label-response">Response — {schema.responseTypeName}</div>
+                {this._renderDocsTable(schema.responseFields || [])}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // ── Headers editing ───────────────────────────────────────────────────────
 
   _addHeader = () => {
@@ -482,10 +655,133 @@ class RequestGenerator extends Component {
     }));
   };
 
-  _resetBody = () => {
+  _useExample = () => {
     const { selectedMethod } = this.state;
     if (!selectedMethod) return;
-    this.setState({ body: protoManager.generateExampleForMethod(selectedMethod.fullPath) });
+
+    // 1. 캡처된 실제 요청 데이터 우선 사용
+    const { log } = this.props;
+    if (log && log.length > 0) {
+      const match = [...log].reverse().find(e => {
+        if (!e.method) return false;
+        try {
+          const path = e.method.startsWith('http')
+            ? new URL(e.method).pathname.replace(/^\//, '')
+            : e.method;
+          return path === selectedMethod.fullPath;
+        } catch { return false; }
+      });
+      if (match) {
+        const cached = match.entryId ? getNetworkEntry(match.entryId) : null;
+        if (cached?.request) {
+          this.setState({ body: cached.request, editorValue: JSON.stringify(cached.request, null, 2) });
+          return;
+        }
+      }
+    }
+
+    // 2. proto 스키마 기반 예시 생성 (fallback)
+    const body = protoManager.generateExampleForMethod(selectedMethod.fullPath);
+    const finalBody = body || {};
+    this.setState({ body: finalBody, editorValue: JSON.stringify(finalBody, null, 2) });
+  };
+
+  // ── CodeMirror JSON editor ────────────────────────────────────────────────
+
+  _onEditorChange = (value) => {
+    this.setState({ editorValue: value });
+    try { this.setState({ body: JSON.parse(value) }); } catch (_) {}
+  };
+
+  _findSchemaField = (fields, name) => {
+    if (!fields) return null;
+    for (const f of fields) {
+      if (f.name === name) return f;
+      if (f.fields) { const r = this._findSchemaField(f.fields, name); if (r) return r; }
+    }
+    return null;
+  };
+
+  _analyzeJsonContext = (before) => {
+    // Stack frame: { type: 'object'|'array', key: string|null }
+    // object → key = active field name (null while expecting next key)
+    // array  → key = owner field name (for repeated enum completions)
+    const stack = [];
+    let i = 0;
+
+    while (i < before.length) {
+      const ch = before[i];
+      if (ch === '{') {
+        stack.push({ type: 'object', key: null }); i++;
+      } else if (ch === '}') {
+        stack.pop(); i++;
+      } else if (ch === '[') {
+        const ownerKey = stack.length > 0 && stack[stack.length - 1].type === 'object'
+          ? stack[stack.length - 1].key : null;
+        stack.push({ type: 'array', key: ownerKey }); i++;
+      } else if (ch === ']') {
+        stack.pop(); i++;
+      } else if (ch === ',') {
+        if (stack.length > 0 && stack[stack.length - 1].type === 'object')
+          stack[stack.length - 1].key = null;
+        i++;
+      } else if (ch === '"') {
+        i++;
+        let s = '';
+        while (i < before.length && before[i] !== '"') {
+          if (before[i] === '\\') i++;
+          if (i < before.length) { s += before[i]; i++; }
+        }
+        if (i >= before.length) {
+          if (!stack.length) return null;
+          const frame = stack[stack.length - 1];
+          if (frame.type === 'array') {
+            return { mode: 'value', fieldName: frame.key, partial: s };
+          }
+          if (frame.key === null) {
+            const path = stack.slice(0, -1).map(f => f.key).filter(Boolean);
+            return { mode: 'key', path, partial: s };
+          }
+          return { mode: 'value', fieldName: frame.key, partial: s };
+        }
+        i++; // skip closing "
+        let j = i;
+        while (j < before.length && /[\s]/.test(before[j])) j++;
+        if (before[j] === ':' && stack.length > 0 && stack[stack.length - 1].type === 'object') {
+          stack[stack.length - 1].key = s;
+          i = j + 1;
+        }
+      } else {
+        i++;
+      }
+    }
+    return null;
+  };
+
+  _getCompletions = (before) => {
+    const { selectedMethod } = this.state;
+    if (!selectedMethod) return null;
+    const schema = protoManager.getSchemaForMethod(selectedMethod.fullPath);
+    if (!schema) return null;
+
+    const ctx = this._analyzeJsonContext(before);
+    if (!ctx) return null;
+
+    if (ctx.mode === 'value') {
+      const field = this._findSchemaField(schema.fields, ctx.fieldName);
+      if (!field) return null;
+      let candidates = null;
+      if (field.kind === 'enum') candidates = field.enumValues;
+      else if (field.typeName === 'bool') candidates = ['true', 'false'];
+      if (!candidates?.length) return null;
+      const filtered = ctx.partial
+        ? candidates.filter(s => s.toLowerCase().startsWith(ctx.partial.toLowerCase()))
+        : candidates;
+      if (!filtered.length) return null;
+      return { options: filtered, partial: ctx.partial };
+    }
+
+    return null;
   };
 
   // ── Send ──────────────────────────────────────────────────────────────────
@@ -574,12 +870,15 @@ class RequestGenerator extends Component {
 
   render() {
     if (!this.props.open) return null;
-    const { methods, selectedMethod, searchQuery, dropdownOpen, url, headers, body, sending, response, responseCollapsed, responseKey, responseCopied, position, size, templates, templatesOpen, templateFilter } = this.state;
+    const { selectedMethod, searchQuery, dropdownOpen, url, headers, body, sending, response, responseCollapsed, responseKey, responseCopied, position, size, templates, templatesOpen, templateFilter, saveOpen, saveName, activeTab, editorValue } = this.state;
     const filtered = this._filteredMethods();
     const ready = protoManager.isReady();
-    const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
+    const schema = ready && selectedMethod ? protoManager.getSchemaForMethod(selectedMethod.fullPath) : null;
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = isDark ? 'twilight' : 'rjv-default';
 
     const modalStyle = {};
+    if (selectedMethod && !size) modalStyle.minHeight = '480px';
     if (position) {
       modalStyle.position = 'fixed';
       modalStyle.left = position.x;
@@ -643,24 +942,51 @@ class RequestGenerator extends Component {
                   </div>
                 )}
               </div>
+              <div className="rg-save-wrap" ref={this._saveRef}>
+                <button
+                  className={`rg-clear-btn${saveOpen ? ' rg-btn-active' : ''}`}
+                  onClick={() => this.setState(s => ({ saveOpen: !s.saveOpen, saveName: s.selectedMethod?.fullPath ? (s.saveName || s.selectedMethod.fullPath.split('/').pop()) : s.saveName }))}
+                  title="Save current request as template"
+                  disabled={!selectedMethod}
+                >
+                  Save
+                </button>
+                {saveOpen && (
+                  <div className="rg-save-panel">
+                    <div className="rg-save-label">Save as Template</div>
+                    <input
+                      className="rg-save-input"
+                      placeholder="Template name..."
+                      value={saveName}
+                      onChange={e => this.setState({ saveName: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') this._saveAsTemplate(); if (e.key === 'Escape') this.setState({ saveOpen: false, saveName: '' }); }}
+                      autoFocus
+                    />
+                    <div className="rg-save-actions">
+                      <button className="rg-save-cancel" onClick={() => this.setState({ saveOpen: false, saveName: '' })}>Cancel</button>
+                      <button className="rg-save-confirm" onClick={this._saveAsTemplate} disabled={!saveName.trim()}>Save</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <button className="rg-clear-btn" onClick={this._clear} title="Clear all fields">Clear</button>
               <button className="rg-close" onClick={this._close}>✕</button>
             </div>
           </div>
 
-          {/* Body */}
-          <div className="rg-content">
-            {!ready && (
+          {!ready && (
+            <div className="rg-content">
               <div className="rg-no-proto">
                 Upload proto files in Settings to use Request Generator.
               </div>
-            )}
+            </div>
+          )}
 
-            {ready && (
-              <>
-                {/* Method selector */}
-                <div className="rg-row">
-                  <label className="rg-label">Method</label>
+          {ready && (
+            <>
+              {/* Fixed top: Method + URL */}
+              <div className="rg-pane-top">
+                <div className="rg-pane-row">
                   <div className="rg-method-wrap" ref={this._dropdownRef}>
                     <input
                       className="rg-method-input"
@@ -693,10 +1019,7 @@ class RequestGenerator extends Component {
                     )}
                   </div>
                 </div>
-
-                {/* URL */}
-                <div className="rg-row">
-                  <label className="rg-label">URL</label>
+                <div className="rg-pane-row rg-url-row">
                   <input
                     className="rg-url-input"
                     type="text"
@@ -704,68 +1027,66 @@ class RequestGenerator extends Component {
                     onChange={e => this.setState({ url: e.target.value })}
                     placeholder="https://your-api.example.com:443/package.Service/Method"
                   />
-                </div>
-
-                {/* Headers */}
-                <div className="rg-row rg-headers-section">
-                  <div className="rg-headers-title">
-                    <label className="rg-label">Headers</label>
-                    <button className="rg-add-btn" onClick={this._addHeader}>+ Add</button>
-                  </div>
-                  <div className="rg-headers-list">
-                    {headers.map(h => (
-                      <div key={h.id} className="rg-header-row">
-                        <input
-                          className="rg-hkey"
-                          value={h.key}
-                          onChange={e => this._updateHeader(h.id, 'key', e.target.value)}
-                          placeholder="Header name"
-                        />
-                        <input
-                          className="rg-hval"
-                          value={h.value}
-                          onChange={e => this._updateHeader(h.id, 'value', e.target.value)}
-                          placeholder="Value"
-                        />
-                        <button className="rg-hdel" onClick={() => this._removeHeader(h.id)}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Body */}
-                <div className="rg-row rg-body-section">
-                  <div className="rg-headers-title">
-                    <label className="rg-label">Request Body</label>
-                    <button className="rg-add-btn" onClick={this._resetBody} disabled={!selectedMethod}>Reset</button>
-                  </div>
-                  <div className="rg-body-editor">
-                    <ReactJson
-                      src={body}
-                      name={null}
-                      theme={theme}
-                      iconStyle="square"
-                      displayDataTypes={false}
-                      displayObjectSize={false}
-                      enableClipboard={false}
-                      collapsed={false}
-                      onEdit={this._onBodyEdit}
-                      onAdd={this._onBodyAdd}
-                      onDelete={this._onBodyDelete}
-                    />
-                  </div>
-                </div>
-
-                {/* Send button */}
-                <div className="rg-actions">
                   <button
                     className="rg-send-btn"
                     onClick={this._sendRequest}
                     disabled={sending || !selectedMethod || !url}
                   >
-                    {sending ? 'Sending…' : 'Send →'}
+                    {sending ? 'Sending…' : 'Send'}
                   </button>
                 </div>
+              </div>
+
+              {/* Tab bar */}
+              <div className="rg-tab-bar">
+                <button className={`rg-tab${activeTab === 'body' ? ' active' : ''}`} onClick={() => this.setState({ activeTab: 'body' })}>Body</button>
+                <button className={`rg-tab${activeTab === 'headers' ? ' active' : ''}`} onClick={() => this.setState({ activeTab: 'headers' })}>
+                  Headers{headers.length > 0 ? ` (${headers.length})` : ''}
+                </button>
+                {schema && (
+                  <button className={`rg-tab${activeTab === 'schema' ? ' active' : ''}`} onClick={() => this.setState({ activeTab: 'schema' })}>Schema</button>
+                )}
+                <div className="rg-tab-spacer" />
+                {activeTab === 'body' && (
+                  <button className="rg-tab-action-btn" onClick={this._useExample} disabled={!selectedMethod}>Use Example</button>
+                )}
+                {activeTab === 'headers' && (
+                  <button className="rg-tab-action-btn" onClick={this._addHeader}>+ Add</button>
+                )}
+              </div>
+
+              {/* Scrollable content */}
+              <div className="rg-content">
+                {/* Body tab */}
+                {activeTab === 'body' && (
+                  <div className="rg-cm-wrap">
+                    <JsonCodeEditor
+                      value={editorValue}
+                      onChange={this._onEditorChange}
+                      getCompletions={this._getCompletions}
+                      isDark={isDark}
+                    />
+                  </div>
+                )}
+
+                {/* Headers tab */}
+                {activeTab === 'headers' && (
+                  <div className="rg-headers-list">
+                    {headers.length === 0 && (
+                      <div className="rg-tab-empty">No headers. Click "+ Add" to add one.</div>
+                    )}
+                    {headers.map(h => (
+                      <div key={h.id} className="rg-header-row">
+                        <input className="rg-hkey" value={h.key} onChange={e => this._updateHeader(h.id, 'key', e.target.value)} placeholder="Header name" />
+                        <input className="rg-hval" value={h.value} onChange={e => this._updateHeader(h.id, 'value', e.target.value)} placeholder="Value" />
+                        <button className="rg-hdel" onClick={() => this._removeHeader(h.id)}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Schema tab */}
+                {activeTab === 'schema' && schema && this._renderSchemaTabContent(schema)}
 
                 {/* Response */}
                 {response && (
@@ -782,18 +1103,10 @@ class RequestGenerator extends Component {
                       </div>
                       {response.data && (
                         <div className="rg-response-actions">
-                          <button
-                            className="rg-resp-btn"
-                            onClick={this._toggleResponseCollapse}
-                            data-tooltip={responseCollapsed === false ? 'Collapse all' : 'Expand all'}
-                          >
+                          <button className="rg-resp-btn" onClick={this._toggleResponseCollapse} data-tooltip={responseCollapsed === false ? 'Collapse all' : 'Expand all'}>
                             {responseCollapsed === false ? '⊟' : '⊞'}
                           </button>
-                          <button
-                            className={`rg-resp-btn${responseCopied ? ' copied' : ''}`}
-                            onClick={this._copyResponse}
-                            data-tooltip={responseCopied ? 'Copied!' : 'Copy JSON'}
-                          >
+                          <button className={`rg-resp-btn${responseCopied ? ' copied' : ''}`} onClick={this._copyResponse} data-tooltip={responseCopied ? 'Copied!' : 'Copy JSON'}>
                             {responseCopied ? '✓' : '⎘'}
                           </button>
                         </div>
@@ -801,24 +1114,14 @@ class RequestGenerator extends Component {
                     </div>
                     {response.data && (
                       <div className="rg-response-body">
-                        <ReactJson
-                          key={responseKey}
-                          src={response.data}
-                          name={null}
-                          theme={theme}
-                          iconStyle="square"
-                          displayDataTypes={false}
-                          displayObjectSize={false}
-                          enableClipboard={false}
-                          collapsed={responseCollapsed}
-                        />
+                        <ReactJson key={responseKey} src={response.data} name={null} theme={theme} iconStyle="square" displayDataTypes={false} displayObjectSize={false} enableClipboard={false} collapsed={responseCollapsed} />
                       </div>
                     )}
                   </div>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           {/* Resize handle */}
           <div className="rg-resize-handle" onMouseDown={this._onResizeStart} />

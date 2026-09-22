@@ -471,7 +471,7 @@ class ProtoManager {
     // Pre-load google.protobuf well-known types so lookupType works correctly
     for (const definition of Object.values(googleProtoDefinitions)) {
       try {
-        protobuf.parse(definition, this.root, { keepCase: true });
+        protobuf.parse(definition, this.root, { keepCase: true, alternateCommentMode: true });
       } catch (e) {
         // Ignore - might already be loaded or have minor conflicts
       }
@@ -492,7 +492,7 @@ class ProtoManager {
         const content = this.protoFiles.get(filePath);
 
         // Parse the file
-        const parsed = protobuf.parse(content, this.root, { keepCase: true });
+        const parsed = protobuf.parse(content, this.root, { keepCase: true, alternateCommentMode: true });
 
         if (parsed.package) {
           console.log('[ProtoManager] Parsed package:', parsed.package);
@@ -1346,14 +1346,83 @@ class ProtoManager {
     try {
       const typeInfo = this.getMessageType(methodPath);
       if (!typeInfo || !typeInfo.requestType) return {};
-      return this._genExample(typeInfo.requestType, new Set(), 0);
+      return this._genExample(typeInfo.requestType, new Set(), 0, true);
     } catch (e) {
       return {};
     }
   }
 
-  _genExample(msgType, visited, depth) {
+  getSchemaForMethod(methodPath) {
+    try {
+      const typeInfo = this.getMessageType(methodPath);
+      if (!typeInfo) return null;
+      return {
+        requestTypeName: typeInfo.requestType?.name ?? '',
+        responseTypeName: typeInfo.responseType?.name ?? '',
+        fields: typeInfo.requestType ? this._buildSchemaFields(typeInfo.requestType, new Set()) : [],
+        responseFields: typeInfo.responseType ? this._buildSchemaFields(typeInfo.responseType, new Set()) : [],
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _buildSchemaFields(msgType, visited) {
+    if (!msgType?.fields) return [];
+    const key = msgType.fullName || msgType.name;
+    if (visited.has(key)) return [];
+    visited.add(key);
+
+    return Object.values(msgType.fields).map(f => {
+      try { f.resolve(); } catch (_) {}
+      const camelName = this.snakeToCamelCase(f.name);
+      const isEnum = f.resolvedType?.values && !f.resolvedType?.fields;
+      const isMessage = !!f.resolvedType?.fields;
+
+      const field = {
+        name: camelName,
+        repeated: f.rule === 'repeated',
+        description: (f.comment || '').trim(),
+      };
+
+      if (isEnum) {
+        field.kind = 'enum';
+        field.typeName = f.resolvedType.name;
+        field.enumValues = Object.keys(f.resolvedType.values);
+        field.enumComments = f.resolvedType.comments || {};
+      } else if (isMessage) {
+        field.kind = 'message';
+        field.typeName = f.resolvedType.name;
+        field.fields = this._buildSchemaFields(f.resolvedType, new Set([...visited]));
+      } else {
+        field.kind = 'scalar';
+        field.typeName = f.type;
+      }
+
+      return field;
+    });
+  }
+
+  generateSkeletonForMethod(methodPath) {
+    try {
+      const typeInfo = this.getMessageType(methodPath);
+      if (!typeInfo || !typeInfo.requestType) return {};
+      return this._genExample(typeInfo.requestType, new Set(), 0, false);
+    } catch (e) {
+      return {};
+    }
+  }
+
+  _genExample(msgType, visited, depth, meaningful) {
     if (!msgType || !msgType.fields || depth > 4) return {};
+
+    // google.protobuf.Timestamp
+    if (msgType.fullName === 'google.protobuf.Timestamp') {
+      return meaningful
+        ? { seconds: Math.floor(Date.now() / 1000), nanos: 0 }
+        : { seconds: 0, nanos: 0 };
+    }
+
     const key = msgType.fullName || String(depth);
     if (visited.has(key)) return {};
     visited.add(key);
@@ -1366,18 +1435,22 @@ class ProtoManager {
         if (f.resolvedType.values && !f.resolvedType.fields) {
           val = Object.keys(f.resolvedType.values)[0] ?? 0;
         } else if (f.resolvedType.fields) {
-          val = this._genExample(f.resolvedType, visited, depth + 1);
+          val = this._genExample(f.resolvedType, visited, depth + 1, meaningful);
         }
       } else {
+        const isTimestampField = /timestamp|_at$|_time$/.test(f.name);
         switch (f.type) {
-          case 'string': val = ''; break;
+          case 'string': val = meaningful ? camelName : ''; break;
           case 'bool': val = false; break;
           case 'bytes': val = ''; break;
-          case 'float': case 'double': val = 0; break;
-          default: val = 0;
+          case 'int64': case 'uint64': case 'sint64': case 'fixed64': case 'sfixed64':
+            val = meaningful ? (isTimestampField ? Date.now() : 1) : 0;
+            break;
+          case 'float': case 'double': val = 0.0; break;
+          default: val = meaningful ? 1 : 0;
         }
       }
-      if (val !== undefined) result[camelName] = f.rule === 'repeated' ? [] : val;
+      if (val !== undefined) result[camelName] = f.rule === 'repeated' ? (meaningful ? [val] : []) : val;
     }
     return result;
   }
